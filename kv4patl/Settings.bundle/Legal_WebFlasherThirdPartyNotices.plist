@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Title</key>
+	<string>Web Flasher Third-Party Notices</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Web Flasher Third-Party Notices</string>
+			<key>FooterText</key>
+			<string>KV4P HT BLE Web Flasher - Third-Party Notices
+
+Developed by Blake Ross WX4ATL
+
+This web flasher is intended to be distributed under GPL-3.0-or-later as part
+of the KV4P/ATL project. It bundles third-party JavaScript so it can run
+locally in Chromium-based browsers without a CDN dependency.
+
+KV4P HT upstream firmware and artwork
+Source: https://github.com/VanceVagell/kv4p-ht
+License: GNU General Public License, version 3 or later.
+Use: firmware source/behavior reference and radio glyph artwork. The web
+flasher glyph at assets/kv4p-radio-glyph.svg is derived from KV4P artwork and
+remains GPL-3.0-or-later.
+
+ESP Web Tools
+Source: https://github.com/esphome/esp-web-tools
+Bundled version: 10.0.1
+License: Apache License 2.0.
+Use: browser-based ESP32 firmware flashing through Web Serial. A readable copy
+of Apache-2.0 is included at LICENSES/Apache-2.0.txt.
+
+Google Lit and related bundled web components
+Source: bundled inside ESP Web Tools dist/esp-web-tools.min.js.
+Licenses observed in bundled source comments: BSD-3-Clause and Apache-2.0.
+Use: custom elements and UI/runtime code used by ESP Web Tools. The minified
+file preserves SPDX comments. Readable license copies are included at
+LICENSES/BSD-3-Clause-Google.txt and LICENSES/Apache-2.0.txt.
+
+Chrome Web Serial documentation
+Source: https://developer.chrome.com/docs/capabilities/serial
+Use: implementation/reference documentation only; no Chrome source is bundled.
+
+Espressif esptool documentation
+Source: https://docs.espressif.com/projects/esptool/
+Use: firmware flashing/build reference only; no esptool source is bundled.
+
+Image not included in public release packages
+The previous local photo asset assets/kv4p-ht-on-desk.jpg did not include
+redistribution metadata. It has been removed from the shippable
+web-flasher/assets folder and is retained only in the local corpus.
+
+No warranty
+The flasher and firmware are provided without warranty. Flashing firmware can
+affect radio behavior; users are responsible for complying with applicable
+amateur-radio laws and device safety requirements.</string>
+		</dict>
+	</array>
+</dict>
+</plist>

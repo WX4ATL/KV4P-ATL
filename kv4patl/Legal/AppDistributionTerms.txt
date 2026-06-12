@@ -1,0 +1,61 @@
+KV4P/ATL - Distribution Terms and Disclaimers
+
+Developed by Blake Ross WX4ATL
+
+License grant for KV4P/ATL
+KV4P/ATL, the BLE firmware overlay, the web flasher glue, and KV4P-derived
+artwork are distributed under the GNU General Public License, version 3 or, at
+your option, any later version. You may run, study, copy, modify, and
+redistribute the GPL-covered parts under GPL-3.0-or-later.
+
+No added restrictions
+For GPL-covered components, no app EULA, store term, support term, or
+distribution note in this project is intended to reduce the rights granted by
+GPL-3.0-or-later. If another term conflicts with the GPL for GPL-covered
+components, the GPL controls for those components.
+
+Corresponding source
+Public binary releases include complete corresponding source for the exact app
+and firmware build distributed to users. Corresponding source includes Swift
+source, Objective-C bridge files, firmware overlay source, web flasher source,
+build scripts, project files, assets, license notices, and instructions needed
+to rebuild the app and flashed firmware binaries.
+
+Copyright and attribution
+KV4P HT upstream Android app, firmware, protocol behavior, and artwork are
+copyright Vance Vagell and KV4P HT contributors. KV4P/ATL app code, BLE
+firmware overlay, web flasher glue, build scripts, and adaptations in this
+workspace are copyright 2026 Blake Ross WX4ATL. Developed by Blake Ross WX4ATL.
+
+Third-party redistributed components
+The web flasher redistributes ESP Web Tools 10.0.1 under Apache-2.0 and
+bundled Google web-component code under Apache-2.0 and BSD-3-Clause notices.
+The app bundle retains upstream KV4P third-party notices verbatim, including
+MIT, SIL Open Font License 1.1, LGPLv3, GPLv3, Apache-2.0, and BSD-3-Clause
+materials that upstream KV4P retained in other-licenses.txt.
+
+Third-party components not redistributed as app code
+raff/kv4p-go, kv4p-sharp, alta/swift-opus, APRS/AX.25 specifications, and IMA
+ADPCM references were used as protocol, interoperability, or historical
+research references. They are not linked into KV4P/ATL app code. No
+third-party APRS symbol artwork pack is bundled in the current app binary.
+
+End User License Agreement
+Public App Store releases use the bundled GPL-preserving End User License
+Agreement text. The agreement names Blake Ross WX4ATL as licensor, identifies
+the public source location as https://github.com/WX4ATL/KV4P-ATL,
+states that GPL-3.0-or-later controls for GPL-covered components, and states
+that the agreement does not impose further restrictions on GPL rights. Public
+binary releases must not be distributed until that repository is public and
+contains the corresponding source for the exact released build.
+
+No warranty
+KV4P/ATL and the companion firmware are provided "as is" without warranty of
+any kind, including without limitation the implied warranties of
+merchantability, fitness for a particular purpose, and non-infringement, to the
+extent permitted by law.
+
+Amateur-radio responsibility
+Users are responsible for complying with applicable amateur-radio laws,
+frequency privileges, station identification, power limits, local rules, and
+safe RF operation requirements.

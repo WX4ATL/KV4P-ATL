@@ -1,0 +1,79 @@
+KV4P/ATL Notices
+
+Developed by Blake Ross WX4ATL
+
+Project license
+This project is intended to be distributed as free/open source software under
+the GNU General Public License, version 3 or later (GPL-3.0-or-later). See
+LICENSE.txt.
+
+The KV4P/ATL app, BLE firmware overlay, BLE web flasher, app icon, and related build
+tools are a combined KV4P HT derivative work because they implement, port, or
+adapt KV4P HT firmware/app behavior, protocol behavior, and artwork. Upstream
+KV4P HT source headers permit redistribution and modification under GPL version
+3 or, at the recipient's option, any later version.
+
+Copyright summary
+- Upstream KV4P HT Android app, firmware, protocol, and artwork:
+  Copyright (C) Vance Vagell and KV4P HT contributors.
+- KV4P/ATL app, BLE firmware overlay, web flasher, build scripts, and icon
+  adaptations in this workspace:
+  Copyright (C) 2026 Blake Ross WX4ATL.
+
+Corresponding source
+Public binary releases of the KV4P/ATL app or BLE firmware include a clear
+source-code link to the complete corresponding source for:
+- kv4patl/ Swift, Objective-C bridge, assets, project.yml, and tests.
+- firmware/ble_bridge/ overlay, build scripts, partition table, and exact
+  instructions needed to rebuild the flashed binary.
+- web-flasher/ HTML, manifests, bundled ESP Web Tools files, and license
+  notices.
+- The upstream KV4P HT source version or commit used by the overlay build.
+
+Third-party components actually redistributed
+- ESP Web Tools 10.0.1, Apache License 2.0, bundled under
+  web-flasher/esp-web-tools/dist/.
+- Lit and related Google web components inside the bundled ESP Web Tools build,
+  BSD-3-Clause and Apache-2.0 notices retained in the minified file and
+  summarized in web-flasher/THIRD_PARTY_NOTICES.txt.
+- KV4P-derived radio glyph/app icon artwork, GPL-3.0-or-later.
+
+Third-party components used only as references or corpus material
+- APRS Protocol Reference and TAPR AX.25 documents are protocol specifications,
+  not bundled source libraries.
+- raff/kv4p-go and kv4p-sharp were protocol/interoperability references and
+  are not linked into the KV4P/ATL app.
+- alta/swift-opus is retained as historical research only; the current audio
+  path uses local IMA ADPCM code instead of Opus.
+- APRS symbol repositories were retained as research only. The current app
+  binary does not redistribute a third-party APRS symbol artwork pack; it uses
+  SF Symbols and local APRS symbol metadata.
+
+Materials not included in public release packages
+The former web flasher photo asset had no local metadata showing authorship or
+source. It is retained only in the local corpus and is not copied into the
+public source package. The web flasher now uses a
+GPL-traceable KV4P-derived SVG glyph instead.
+
+End User License Agreement and GPL distribution rule
+GPL-3.0-or-later and Apple's default App Store EULA can be in tension because
+the default EULA restricts transfer, redistribution, copying, reverse
+engineering, and modification except where open-source terms permit it. The
+App Store publication path for KV4P/ATL is:
+1. Publish complete corresponding source first.
+2. Add a visible source-code link in the app's About/Licenses section and App
+   Store review notes.
+3. Use the bundled GPL-preserving End User License Agreement as the App Store
+   custom license agreement and point to LICENSE.txt/source.
+4. Do not ship under Apple's Standard EULA alone.
+
+Planned public source repository:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+Do not distribute public app or firmware binaries until that repository is
+public and contains the complete corresponding source for the exact build.
+
+No warranty
+This software and firmware are experimental amateur-radio tools provided
+without warranty, to the extent permitted by applicable law.

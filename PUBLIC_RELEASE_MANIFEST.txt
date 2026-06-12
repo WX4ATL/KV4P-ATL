@@ -1,0 +1,83 @@
+KV4P/ATL Public Release Manifest
+
+Developed by Blake Ross WX4ATL
+
+Purpose
+This manifest defines the public, legally shippable source-release set for
+KV4P/ATL across iOS, firmware, and the Chromium web flasher.
+
+Public source-release contents
+- LICENSE.txt
+- NOTICE.txt
+- README.txt
+- APP_STORE_GPL_RELEASE_PLAN.txt
+- CUSTOM_EULA_GPL.txt
+- GITHUB_RELEASE_GUIDE.txt
+- PUBLIC_RELEASE_MANIFEST.txt
+- .gitignore
+- project.yml
+- LICENSES/
+- kv4patl/
+- kv4patl_tests/
+- firmware/ble_bridge/
+- tools/
+- web-flasher/
+
+Public release exclusions
+The following local materials are not part of the public release package:
+- corpus/
+- corpus/backups/
+- corpus/device_logs/
+- corpus/download_logs/
+- corpus/license_quarantine/
+- corpus/license_research/
+- corpus/sources/
+- downloaded PDFs and raw research copies
+- private signing or provisioning material
+- Xcode archives, DerivedData, xcresult bundles, dSYM files, and ipa files
+- unknown-source photos, screenshots, vendor logos, and personal device logs
+
+License posture
+KV4P/ATL app code, BLE firmware overlay, web flasher glue, build scripts, and
+KV4P-derived artwork are distributed under GPL-3.0-or-later. Public binary
+releases include complete corresponding source for the exact app, firmware,
+web flasher, assets, build scripts, and project files used to produce them.
+
+Third-party redistributed materials
+- ESP Web Tools 10.0.1 is redistributed in web-flasher/esp-web-tools/dist/
+  under Apache-2.0 with readable notices in web-flasher/LICENSES/.
+- Bundled Google Lit/Material Web runtime code inside ESP Web Tools retains
+  Apache-2.0 and BSD-3-Clause notices.
+- KV4P-derived icon and web glyph artwork are redistributed as
+  GPL-3.0-or-later corresponding source.
+- Upstream KV4P third-party notices are retained in
+  kv4patl/Legal/KV4PUpstreamOtherLicenses.txt and the generated
+  Settings.bundle legal panes.
+
+Not redistributed as linked/bundled app code
+- raff/kv4p-go, kv4p-sharp, alta/swift-opus, APRS/AX.25 specifications, and
+  IMA ADPCM references were used as protocol or historical references.
+- The app does not bundle a third-party APRS symbol artwork pack.
+- Apple SDKs, SF Symbols, and Icon Composer tooling are used as platform tools
+  and frameworks; Apple source or symbol font files are not redistributed.
+
+App Store rule
+Public App Store distribution uses the GPL-preserving End User License
+Agreement in CUSTOM_EULA_GPL.txt as the custom plain-text license agreement in
+App Store Connect. The app is not submitted under Apple's Standard EULA alone
+because the agreement expressly preserves GPL rights for GPL-covered
+components.
+
+Planned public source repository
+Public binary releases point to:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+Do not distribute public app or firmware binaries until that repository is
+public and contains the complete corresponding source for the exact released
+build.
+
+Release-package command
+Run this from the project root to create a clean public source package:
+
+  tools/make_public_release.sh

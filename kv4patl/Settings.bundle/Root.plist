@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Title</key>
+	<string>KV4P/ATL</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>KV4P/ATL</string>
+			<key>FooterText</key>
+			<string>Settings and legal information for the KV4P/ATL radio app.</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Licenses, Credits &amp; Attributions</string>
+			<key>File</key>
+			<string>Legal_Index</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSTitleValueSpecifier</string>
+			<key>Title</key>
+			<string>App Name</string>
+			<key>Key</key>
+			<string>app_name</string>
+			<key>DefaultValue</key>
+			<string>KV4P/ATL</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSTitleValueSpecifier</string>
+			<key>Title</key>
+			<string>Version</string>
+			<key>Key</key>
+			<string>version</string>
+			<key>DefaultValue</key>
+			<string>0.1.0</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSTitleValueSpecifier</string>
+			<key>Title</key>
+			<string>Project License</string>
+			<key>Key</key>
+			<string>project_license</string>
+			<key>DefaultValue</key>
+			<string>GPL-3.0-or-later</string>
+		</dict>
+	</array>
+</dict>
+</plist>

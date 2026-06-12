@@ -1,0 +1,126 @@
+KV4P/ATL - Third-Party Notices
+
+Developed by Blake Ross WX4ATL
+
+This app and companion firmware are Apple-platform work for the KV4P HT radio
+ecosystem. The following notices summarize materials used, ported, or
+consulted during development and identify what is actually redistributed.
+
+KV4P/ATL project code
+Source: local project source, intended public repository:
+https://github.com/WX4ATL/KV4P-ATL
+License: GNU General Public License, Version 3 or later.
+Use in this project: SwiftUI app, BLE transport, local APRS/AX.25 logic,
+IMA ADPCM voice codec code, BLE firmware overlay, build scripts, app icon
+adaptation, and web flasher glue. Public binary releases include complete
+corresponding source for the app, firmware overlay, web flasher, scripts,
+assets, and build instructions needed to rebuild the distributed binaries.
+
+KV4P HT
+Source: https://github.com/VanceVagell/kv4p-ht
+License: GNU General Public License, Version 3 or later, as stated in upstream
+source headers.
+Use in this project: firmware base, Android app behavior/protocol reference,
+and app icon artwork source. KV4P/ATL preserves GPL notices, marks local
+modifications, provides corresponding source for public binary releases, and
+preserves the upstream no-warranty terms.
+
+KV4P/ATL app icon
+Source artwork: https://github.com/VanceVagell/kv4p-ht/tree/main/artwork
+License: GNU General Public License, Version 3.0 through the KV4P HT project.
+Use in this project: the KV4P/ATL app icon is an Apple Icon Composer document
+(`kv4patl/AppIcon.icon`) derived from the KV4P radio glyph artwork. The Icon
+Composer package contains separated SVG glyph layers and lets Xcode compile
+Default, Dark, and Mono/tintable app icon appearances. The icon source is
+included as GPL-covered corresponding source.
+
+KV4P HT upstream third-party materials
+Source: https://github.com/VanceVagell/kv4p-ht/blob/main/other-licenses.txt
+Verbatim retained notice bundled in this app:
+KV4PUpstreamOtherLicenses.txt
+Components and licenses retained from the upstream notice:
+- usb-serial-for-android library: MIT License; Copyright (c) 2011-2013 Google
+  Inc. and Copyright (c) 2013 Mike Wakerly.
+- Jost Font: SIL Open Font License, Version 1.1; Copyright 2020 The Jost
+  Project Authors.
+- arduino-dra818: GNU Lesser General Public License, Version 3.
+- javAX25: GNU Lesser General Public License, Version 3.
+- javAPRSlib: GNU Lesser General Public License, Version 3.
+- BearConsole2: GNU Lesser General Public License, Version 3.
+- esptool ESP32 stub flasher binaries: dual Apache License 2.0 or MIT License.
+- Arduino-audio-tools: GNU General Public License, Version 3.
+- slf4android: MIT License.
+- esp32-flash: GNU General Public License, Version 3.
+- esp32-stubs: MIT License.
+KV4P/ATL does not link or bundle these Android/web/font helper components
+directly. These upstream legal notices are bundled verbatim because this
+project is a KV4P HT derivative and recipients should be able to inspect the
+same upstream legal notices.
+
+raff/kv4p-go
+Source: https://github.com/raff/kv4p-go
+License: MIT.
+Use in this project: interoperability and protocol reference only; not linked
+as app code.
+
+kv4p-sharp
+Source: https://github.com/lupettohf/kv4p-sharp
+License: GNU General Public License, Version 3.0.
+Use in this project: interoperability reference only; not linked as app code.
+
+alta/swift-opus
+Source: https://github.com/alta/swift-opus
+License: BSD 3-Clause.
+Use in this project: historical source/dependency reference retained in the
+corpus. The current app voice path uses IMA ADPCM rather than Opus.
+
+APRS and AX.25 documents
+Sources: APRS Protocol Reference 1.0.1, APRS 1.2 draft materials, and TAPR
+AX.25 Link Access Protocol 2.2.
+Use in this project: protocol specifications consulted to implement packet
+encoding, decoding, and display behavior. These are cited as references, not
+bundled source libraries.
+
+IMA ADPCM
+Sources: Interactive Multimedia Association ADPCM material and MultimediaWiki
+technical reference.
+Use in this project: public algorithm/reference material for the app's voice
+codec implementation; no external codec library is linked.
+
+APRS symbols
+KV4P/ATL currently displays APRS map markers using SF Symbols and local
+code-derived APRS symbol metadata. No third-party APRS symbol artwork pack is
+redistributed in the current app binary.
+
+ESP Web Tools
+Source: https://github.com/esphome/esp-web-tools
+License: Apache License 2.0.
+Use in this project: bundled only in the Chromium web flasher under
+web-flasher/esp-web-tools/dist/, not linked into the KV4P/ATL app. The web
+flasher includes readable Apache-2.0 and BSD-3-Clause license copies in
+web-flasher/LICENSES/.
+
+Google Lit and Material Web components inside ESP Web Tools
+Sources: https://github.com/lit/lit and
+https://github.com/material-components/material-web
+Licenses: BSD-3-Clause and Apache-2.0, as preserved in bundled SPDX comments.
+Use in this project: transitive bundled web component/runtime code used by ESP
+Web Tools in the web flasher only.
+
+Web flasher visual asset
+The shippable web flasher uses assets/kv4p-radio-glyph.svg, derived from KV4P
+artwork under GPL-3.0-or-later. The prior unverified photo asset is retained
+only in the local corpus and is not copied into the public source package.
+
+Apple SDKs and symbols
+SwiftUI, AVFAudio, Core Bluetooth, Core Location, MapKit, and SF Symbols are
+used as Apple-provided system SDK functionality. No Apple SDK source or SF
+Symbols font files are bundled in this notice.
+
+End User License Agreement and GPL distribution rule
+Public App Store releases of KV4P/ATL use the bundled End User License
+Agreement that preserves GPL rights. For GPL-covered components,
+GPL-3.0-or-later controls if the agreement conflicts with the GPL, and the
+agreement does not add further restrictions on copying, studying, modifying,
+or redistributing those GPL-covered components. Public binary releases include
+a source URL and complete corresponding source.

@@ -1,0 +1,18 @@
+.DS_Store
+*.xcuserstate
+DerivedData/
+build/
+*.xcresult
+kv4patl.xcodeproj/
+
+# Local-only research, device logs, raw downloads, backups, and quarantine
+# materials are not part of the public source release package.
+corpus/
+
+# Signing and distribution products are generated outside source control.
+*.mobileprovision
+*.provisionprofile
+*.xcarchive
+*.ipa
+*.dSYM
+archives/

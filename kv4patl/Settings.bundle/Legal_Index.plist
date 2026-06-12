@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Title</key>
+	<string>Licenses</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Licenses, Credits &amp; Attributions</string>
+			<key>FooterText</key>
+			<string>Each legal notice below is shown as one complete text block. The same source files are bundled with the app and retained in the project source.</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Distribution Terms and Disclaimers</string>
+			<key>File</key>
+			<string>Legal_AppDistributionTerms</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Component Legal Index</string>
+			<key>File</key>
+			<string>Legal_ComponentLegalIndex</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Third-Party Notices</string>
+			<key>File</key>
+			<string>Legal_ThirdPartyNotices</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>End User License Agreement</string>
+			<key>File</key>
+			<string>Legal_EndUserLicenseAgreement</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>KV4P upstream other-licenses.txt</string>
+			<key>File</key>
+			<string>Legal_KV4P_Upstream_OtherLicenses</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>GPLv3 Source Notice</string>
+			<key>File</key>
+			<string>Legal_GPLv3SourceNotice</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>GNU GPL 3.0 or Later</string>
+			<key>File</key>
+			<string>Legal_GPL_3_0_or_later</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>ESP Web Tools Apache 2.0</string>
+			<key>File</key>
+			<string>Legal_Apache_2_0_ESP_Web_Tools</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Google Web Components BSD 3-Clause</string>
+			<key>File</key>
+			<string>Legal_BSD_3_Clause_Google_Web_Components</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>alta/swift-opus BSD 3-Clause</string>
+			<key>File</key>
+			<string>Legal_BSD_3_Clause_alta_swift_opus</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>raff/kv4p-go MIT</string>
+			<key>File</key>
+			<string>Legal_MIT_raff_kv4p_go</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSChildPaneSpecifier</string>
+			<key>Title</key>
+			<string>Web Flasher Third-Party Notices</string>
+			<key>File</key>
+			<string>Legal_WebFlasherThirdPartyNotices</string>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,135 @@
+KV4P/ATL App Store and GitHub Release Plan
+
+Purpose
+This file is the publication checklist for releasing the KV4P/ATL app, BLE
+firmware overlay, and web flasher as GPL-3.0-or-later open source.
+
+Recommended public repository shape
+Use one public GitHub repository for the KV4P/ATL app plus the BLE firmware overlay,
+under the GitHub account currently signed in on this Mac:
+
+  WX4ATL/KV4P-ATL
+
+Public source URL:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+Keep these files and folders public:
+- LICENSE.txt
+- NOTICE.txt
+- README.txt
+- APP_STORE_GPL_RELEASE_PLAN.txt
+- CUSTOM_EULA_GPL.txt
+- GITHUB_RELEASE_GUIDE.txt
+- project.yml
+- kv4patl/
+- kv4patl_tests/
+- firmware/ble_bridge/
+- tools/
+- web-flasher/
+
+Excluded from public releases:
+- corpus/
+- corpus/backups/
+- corpus/device_logs/
+- corpus/download_logs/
+- corpus/license_quarantine/
+- corpus/license_research/
+- corpus/sources/
+- private signing/provisioning material
+- downloaded PDFs and raw research copies
+- unknown-source photos, screenshots, or vendor logos
+- generated build products, DerivedData, archives, provisioning profiles, or
+  device-specific logs
+
+Public source package
+Use PUBLIC_RELEASE_MANIFEST.txt and tools/make_public_release.sh to create the
+public source package from the whitelist above. The generated package contains
+the app source, firmware overlay, web flasher, licenses, notices, build tools,
+and complete corresponding source materials needed for the distributed app and
+firmware binaries.
+
+Repository license
+Use GPL-3.0-or-later for this project because upstream KV4P source headers say
+the program may be redistributed under GPL version 3 or, at the recipient's
+option, any later version.
+
+GitHub steps
+1. Create a public repository.
+2. Add LICENSE.txt at the root. GitHub documents that open-source projects
+   include a license file, commonly LICENSE.txt, so visitors can see the
+   license at the top of the repository.
+3. Add NOTICE.txt and ThirdPartyNotices files.
+4. Add a release tag for each firmware/app release.
+5. Attach firmware binaries to GitHub Releases only when the exact
+   corresponding source and build instructions for those binaries are in the
+   same repo or linked from the release notes.
+6. Include the upstream KV4P HT commit or release version used to build the
+   firmware overlay.
+7. Put https://github.com/WX4ATL/KV4P-ATL in the iOS About/Licenses
+   screen and App Store review notes after the repository is public.
+
+App Store steps
+1. Keep all GPL notices visible in the app under Settings > About/Licenses.
+2. Publish complete corresponding source before submitting the binary.
+3. In App Store Connect, choose a Custom License Agreement instead of Apple's
+   Standard EULA.
+4. Paste the GPL-aware End User License Agreement from CUSTOM_EULA_GPL.txt.
+   Apple's App Store Connect help says custom license agreements are plain
+   text and configured in App Information > License Agreement.
+5. In App Review notes, explain that the app and companion firmware source are
+   GPL-3.0-or-later and provide the public GitHub source URL.
+6. Do not submit with Apple's Standard EULA alone; the bundled End User
+   License Agreement is the distribution rule for this GPL-covered app.
+
+Why a custom license agreement matters
+Apple's default App Store EULA says apps are licensed, not sold, and includes
+limits on transfer, redistribution, copying, reverse engineering, modification,
+and derivative works except where open-source component terms permit those
+acts. GPLv3 section 10 does not allow adding further restrictions on rights
+granted by the GPL. The bundled End User License Agreement makes clear that
+GPL rights are not reduced by App Store terms.
+
+App Store fallback rule
+If App Store Connect cannot apply the GPL-preserving End User License
+Agreement or a store term is applied that adds restrictions to GPL-covered
+components, do not distribute that binary through the App Store. Use source
+distribution, local development builds, or another GPL-compatible distribution
+path instead.
+
+GPL statements to use in new source files
+For Swift, Objective-C, C, C++, shell, HTML, JavaScript, and SVG source created
+for this project, add the matching comment form near the top:
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+When adding a full header, use:
+
+  KV4P/ATL
+  Copyright (C) 2026 Blake Ross WX4ATL
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or (at your option) any later
+  version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+  details.
+
+  You should have received a copy of the GNU General Public License along with
+  this program. If not, see https://www.gnu.org/licenses/.
+
+Component-specific notes
+- kv4patl/: GPL-3.0-or-later Swift app code. Apple SDK frameworks are
+  system libraries and are not redistributed as source.
+- firmware/ble_bridge/: GPL-3.0-or-later overlay intended for the GPL KV4P HT
+  firmware. Public firmware binaries are distributed with corresponding source
+  and build steps.
+- web-flasher/: GPL-3.0-or-later project HTML/CSS/JS, with ESP Web Tools under
+  Apache-2.0 and bundled Google web-component code under Apache-2.0/BSD-3-Clause.
+- AppIcon.icon and web-flasher/assets/kv4p-radio-glyph.svg: GPL-3.0-or-later
+  derivative artwork based on KV4P HT artwork.
+- APRS symbols: the current app binary does not bundle a third-party APRS
+  symbol artwork pack. It uses SF Symbols and local APRS symbol metadata.

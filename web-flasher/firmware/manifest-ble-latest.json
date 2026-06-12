@@ -1,0 +1,14 @@
+{
+  "name": "KV4P HT BLE bridge firmware",
+  "version": "v17-ble",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "improv": false,
+      "parts": [
+        { "path": "kv4p-ht-firmware-ble-v17.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

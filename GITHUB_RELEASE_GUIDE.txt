@@ -1,0 +1,108 @@
+KV4P/ATL GitHub Publishing Guide
+
+Developed by Blake Ross WX4ATL
+
+Goal
+Publish this project as a professional public source repository at:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+This repository should be public before any App Store build, firmware binary,
+or web flasher binary is publicly distributed.
+
+What to publish
+Publish the whitelisted source package defined in PUBLIC_RELEASE_MANIFEST.txt.
+That package includes:
+- license notices
+- build instructions
+- the Swift iPhone app source
+- firmware source and BLE overlay files
+- web flasher source
+- project files
+- tests
+- assets required to rebuild distributed components
+
+What not to publish
+Do not publish:
+- corpus/
+- device logs
+- downloaded PDFs and raw research copies
+- signing certificates, provisioning profiles, or Apple account files
+- Xcode archives, .ipa files, dSYM files, DerivedData, or xcresult bundles
+- personal screenshots or unknown-source images
+
+Step-by-step GitHub setup
+1. Open https://github.com/ in a browser.
+2. Sign in to the GitHub account named WX4ATL.
+3. Click the plus button in the top right, then choose New repository.
+4. Repository name:
+
+   KV4P-ATL
+
+5. Description:
+
+   Native iPhone app, BLE firmware overlay, and web flasher for KV4P HT radios.
+
+6. Set visibility to Public.
+7. Do not add a README, license, or .gitignore on GitHub. This local project
+   already has those files.
+8. Click Create repository.
+
+Recommended local command path after the GitHub repo exists
+Run these from the project folder:
+
+  cd "/path/to/KV4P-ATL"
+  git init
+  git branch -M main
+  git add .gitignore APP_STORE_GPL_RELEASE_PLAN.txt CUSTOM_EULA_GPL.txt GITHUB_RELEASE_GUIDE.txt LICENSE.txt LICENSES NOTICE.txt PUBLIC_RELEASE_MANIFEST.txt README.txt kv4patl kv4patl_tests firmware project.yml tools web-flasher
+  git commit -m "Initial KV4P ATL public source release"
+  git remote add origin https://github.com/WX4ATL/KV4P-ATL.git
+  git push -u origin main
+
+If git says a remote named origin already exists, use:
+
+  git remote set-url origin https://github.com/WX4ATL/KV4P-ATL.git
+
+After pushing
+1. Open https://github.com/WX4ATL/KV4P-ATL.
+2. Confirm the README, LICENSE.txt, NOTICE.txt, CUSTOM_EULA_GPL.txt, firmware/,
+   web-flasher/, kv4patl/, and tools/ folders are visible.
+3. Confirm corpus/, device logs, signing files, archives, and build products
+   are not visible.
+4. Add repository topics such as:
+
+   kv4p, kv4p-ht, ham-radio, aprs, ios, swiftui, ble, esp32, kiss-tnc
+
+5. In the GitHub About/sidebar website field, optionally add the public web
+   flasher URL after it is hosted.
+
+Upstream KV4P relationship
+This project should remain a standalone repository for now. Do not request an
+official fork relationship, transfer, or association unless Blake Ross WX4ATL
+later receives or decides to request upstream permission/coordination.
+
+Professional upstream links to keep
+The README, About/Sources screen, and legal notices should link back to:
+
+  https://github.com/VanceVagell/kv4p-ht
+
+Describe KV4P/ATL as a KV4P HT derivative/companion project, not an official
+replacement for or official release of the upstream KV4P HT project.
+
+Before an App Store submission
+1. Confirm https://github.com/WX4ATL/KV4P-ATL is public.
+2. Confirm it contains the exact corresponding source for the submitted app and
+   firmware build.
+3. Paste CUSTOM_EULA_GPL.txt into App Store Connect as the custom license
+   agreement text.
+4. Put the public source URL in App Review notes:
+
+   https://github.com/WX4ATL/KV4P-ATL
+
+5. Use support email:
+
+   WX4ATL@icloud.com
+
+6. Use issue tracker:
+
+   https://github.com/WX4ATL/KV4P-ATL/issues

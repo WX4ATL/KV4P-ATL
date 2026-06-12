@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Title</key>
+	<string>End User License Agreement</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>End User License Agreement</string>
+			<key>FooterText</key>
+			<string>KV4P/ATL End User License Agreement
+
+This End User License Agreement is the license agreement for KV4P/ATL when
+distributed through the Apple App Store or any other app distribution channel.
+It is written in plain text for App Store Connect.
+
+1. Parties
+This agreement is between you and Blake Ross WX4ATL, not Apple. Apple is not
+responsible for KV4P/ATL, the companion firmware, or related radio hardware.
+
+2. GPL-covered components
+KV4P/ATL, its companion BLE firmware overlay, the web flasher glue, and
+included KV4P-derived artwork are free/open source software licensed under the
+GNU General Public License, version 3 or, at your option, any later version
+(GPL-3.0-or-later). For those GPL-covered components, GPL-3.0-or-later grants
+you the right to run, study, copy, modify, and redistribute the software.
+
+3. No additional restrictions on GPL rights
+This agreement does not impose additional restrictions on rights granted by
+GPL-3.0-or-later for GPL-covered components. If any term in this agreement,
+any App Store term, or any other distribution term conflicts with
+GPL-3.0-or-later for GPL-covered components, GPL-3.0-or-later controls for
+those components.
+
+4. Corresponding source code
+For any public binary release of KV4P/ATL, the complete corresponding source
+code for the GPL-covered application and firmware components is made available
+at:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+The source repository includes license notices, build instructions, firmware
+source and overlay files, web flasher source, project files, scripts, and
+assets required to rebuild the distributed components. Public binary releases
+must not be distributed until that repository is public and contains the
+corresponding source for the exact released build.
+
+5. Third-party notices
+Third-party notices are available inside the iOS Settings app under
+KV4P/ATL &gt; Licenses, Credits &amp; Attributions and in the source repository. ESP
+Web Tools is licensed under Apache-2.0. Bundled Google web-component code
+inside ESP Web Tools includes Apache-2.0 and BSD-3-Clause components. The app
+also retains upstream KV4P third-party notices where relevant.
+
+6. Amateur-radio responsibility
+You are responsible for complying with applicable amateur-radio laws,
+frequency privileges, identification, power limits, local rules, emergency
+communication rules, and safe station operation requirements. KV4P/ATL does
+not authorize operation outside your privileges.
+
+7. No warranty
+KV4P/ATL and the companion firmware are provided "as is" and "as available,"
+without warranty of any kind, express or implied, including without limitation
+the implied warranties of merchantability, fitness for a particular purpose,
+title, and non-infringement, to the extent permitted by law.
+
+8. Limitation of liability
+To the maximum extent permitted by law, Blake Ross WX4ATL is not liable for
+indirect, incidental, special, consequential, exemplary, or punitive damages,
+or for loss of data, interruption of service, radio misuse, RF interference,
+hardware damage, regulatory penalties, or other losses arising from use of
+this app, firmware, radio hardware, or related services.
+
+9. Support
+Support questions may be directed to:
+
+  WX4ATL@icloud.com
+  https://github.com/WX4ATL/KV4P-ATL/issues
+
+10. Apple minimum terms
+Apple and Apple's subsidiaries are third-party beneficiaries of this agreement
+and, upon your acceptance of this agreement, Apple has the right to enforce
+this agreement against you as a third-party beneficiary. This app may be used
+on Apple-branded products that you own or control and as permitted by the
+Apple Media Services Terms and Conditions and applicable App Store usage
+rules, except that nothing in this section limits rights granted by
+GPL-3.0-or-later for GPL-covered components.</string>
+		</dict>
+	</array>
+</dict>
+</plist>

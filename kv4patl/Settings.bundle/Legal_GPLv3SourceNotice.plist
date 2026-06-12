@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Title</key>
+	<string>GPLv3 Source Notice</string>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>GPLv3 Source Notice</string>
+			<key>FooterText</key>
+			<string>KV4P/ATL Source Code Notice
+
+Developed by Blake Ross WX4ATL
+
+This app and its companion BLE firmware overlay are distributed under the GNU
+General Public License, version 3 or later (GPL-3.0-or-later).
+
+For any public binary release, the complete corresponding source is published at:
+
+  https://github.com/WX4ATL/KV4P-ATL
+
+The source repository contains the KV4P/ATL app, firmware overlay, web
+flasher, build scripts, exact firmware build instructions, notices, and
+upstream KV4P source version used for the release.
+
+Do not distribute public app or firmware binaries until that repository is
+public and contains the corresponding source for the exact released build.
+
+This software is provided without warranty, to the extent permitted by law.</string>
+		</dict>
+	</array>
+</dict>
+</plist>

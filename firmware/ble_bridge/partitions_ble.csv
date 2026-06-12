@@ -1,0 +1,10 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# BLE support pushes the KV4P firmware past the stock 1.25 MB OTA app slot.
+# This keeps KV4P's NVS/board-config offsets intact and gives the single app
+# slot enough room for the BLE transport. Flash this as part of a full merged
+# image so the bootloader uses the matching partition table.
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x300000,
+spiffs,   data, spiffs,  0x310000,0xE0000,
+coredump, data, coredump,0x3F0000,0x10000,
