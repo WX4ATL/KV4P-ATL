@@ -30,6 +30,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let captureEngine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let playbackVarispeed = AVAudioUnitVarispeed()
     private let codec: VoiceCodec
     private let workQueue = DispatchQueue(label: "com.blakeross.kv4patl.audio.playback", qos: .userInitiated)
     private let workQueueKey = DispatchSpecificKey<Void>()
@@ -53,6 +54,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private var lastPlaybackError: String?
     private var inputTapInstalled = false
     private var playerAttached = false
+    private var playbackVarispeedAttached = false
     private var sourceNode: AVAudioSourceNode?
     private var sourceNodeAttached = false
     private let playbackRenderLock = NSLock()
@@ -75,6 +77,8 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private var lastPlaybackGraphRecovery = Date.distantPast
     private var lastPlaybackGraphRecoveryMessage: String?
     private var lastQueuedPlaybackHardTrim = Date.distantPast
+    private var playbackRate: Float = 1.0
+    private var lastPlaybackRateLog = Date.distantPast
     private var lastConsoleAudioLog = Date.distantPast
     private var lastPlaybackLifecycleLog = Date.distantPast
     private var scheduledBuffersSinceLifecycleLog = 0
@@ -378,7 +382,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         let queuedLatencyMS = queued * Self.frameDurationMS
         let catchUpFrames = (latencyCatchUpDroppedSamples + KV4PVoice.engineFrameSize - 1) / KV4PVoice.engineFrameSize
         let renderStats = playbackRenderStats()
-        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), \(compactRouteSummary())"
+        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), rate \(String(format: "%.3f", playbackRate))x, late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), \(compactRouteSummary())"
         if let lastPlaybackGraphRecoveryMessage {
             summary += ", graph \(playbackGraphRecoveryAttempts): \(lastPlaybackGraphRecoveryMessage)"
         }
@@ -440,6 +444,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
 
         schedulePendingPlaybackBuffers()
+        updatePlaybackRateForQueuedFrames(playbackQueuedFrameCount())
         if !player.isPlaying {
             player.play()
         }
@@ -481,12 +486,14 @@ final class KV4PAudioEngine: @unchecked Sendable {
         logPlaybackLifecycleIfNeeded()
         scheduledPlaybackBuffers = max(0, scheduledPlaybackBuffers - 1)
         schedulePendingPlaybackBuffers()
+        updatePlaybackRateForQueuedFrames(playbackQueuedFrameCount())
         refillLowPlaybackWatermarkIfNeeded()
         if scheduledPlaybackBuffers == 0, pendingPlaybackBuffers.isEmpty {
             bufferedPlaybackActive = false
             playbackUnderruns += 1
             consecutiveHealthyPlaybackFrames = 0
             adaptiveRebufferPrerollBuffers = min(Self.maximumAdaptiveRebufferPrerollBuffers, adaptiveRebufferPrerollBuffers + 2)
+            updatePlaybackRateForQueuedFrames(0, force: true)
             try? scheduleUnderrunConcealmentBurst()
         }
     }
@@ -749,6 +756,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         lastPlaybackGraphRecovery = .distantPast
         lastPlaybackGraphRecoveryMessage = nil
         lastQueuedPlaybackHardTrim = .distantPast
+        updatePlaybackRateForQueuedFrames(0, force: true)
         latencyCatchUpCountdown = 0
         latencyCatchUpDroppedSamples = 0
     }
@@ -882,6 +890,39 @@ final class KV4PAudioEngine: @unchecked Sendable {
         if oldGeneration != playbackGeneration {
             logAudio("trimmed stale RX playback backlog queued=\(queuedBuffers) dropped=\(droppedBuffers) kept=\(pendingPlaybackBuffers.count)")
         }
+        updatePlaybackRateForQueuedFrames(playbackQueuedFrameCount(), force: true)
+    }
+
+    private func updatePlaybackRateForQueuedFrames(_ queuedFrames: Int, force: Bool = false) {
+        let desiredRate = desiredPlaybackRate(forQueuedFrames: queuedFrames)
+        let maxStep = force ? Self.livePlaybackMaxCatchUpRate - 1.0 : Self.livePlaybackRateStep
+        let delta = desiredRate - playbackRate
+        let nextRate: Float
+        if abs(delta) <= maxStep {
+            nextRate = desiredRate
+        } else {
+            nextRate = playbackRate + (delta > 0 ? maxStep : -maxStep)
+        }
+
+        guard force || abs(nextRate - playbackRate) >= Self.livePlaybackMinimumRateChange else { return }
+        playbackRate = nextRate
+        playbackVarispeed.rate = nextRate
+
+        let now = Date()
+        if force || now.timeIntervalSince(lastPlaybackRateLog) >= Self.playbackRateLogIntervalSeconds {
+            lastPlaybackRateLog = now
+            logAudio("RX live catchup rate=\(String(format: "%.3f", nextRate))x queued=\(queuedFrames)")
+        }
+    }
+
+    private func desiredPlaybackRate(forQueuedFrames queuedFrames: Int) -> Float {
+        guard queuedFrames > Self.livePlaybackRateTargetBuffers else { return 1.0 }
+        let excessFrames = min(
+            queuedFrames - Self.livePlaybackRateTargetBuffers,
+            Self.livePlaybackRateFullScaleExcessBuffers
+        )
+        let ratio = Float(excessFrames) / Float(Self.livePlaybackRateFullScaleExcessBuffers)
+        return 1.0 + ratio * (Self.livePlaybackMaxCatchUpRate - 1.0)
     }
 
     private func trimExcessPlaybackLatencyLocked() {
@@ -1152,12 +1193,23 @@ final class KV4PAudioEngine: @unchecked Sendable {
             engine.attach(player)
             playerAttached = true
         }
-        let connectionPoints = engine.outputConnectionPoints(for: player, outputBus: 0)
-        guard forceReconnect || connectionPoints.isEmpty else { return }
-        if !connectionPoints.isEmpty {
+        if !playbackVarispeedAttached {
+            engine.attach(playbackVarispeed)
+            playbackVarispeed.rate = playbackRate
+            playbackVarispeedAttached = true
+        }
+
+        let playerConnections = engine.outputConnectionPoints(for: player, outputBus: 0)
+        let rateConnections = engine.outputConnectionPoints(for: playbackVarispeed, outputBus: 0)
+        guard forceReconnect || playerConnections.isEmpty || rateConnections.isEmpty else { return }
+        if !playerConnections.isEmpty {
             engine.disconnectNodeOutput(player)
         }
-        engine.connect(player, to: engine.mainMixerNode, format: playbackFormat)
+        if !rateConnections.isEmpty {
+            engine.disconnectNodeOutput(playbackVarispeed)
+        }
+        engine.connect(player, to: playbackVarispeed, format: playbackFormat)
+        engine.connect(playbackVarispeed, to: engine.mainMixerNode, format: playbackFormat)
     }
 
     private func ensureSourceAttached(forceReconnect: Bool = false) {
@@ -1333,12 +1385,17 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private static let maximumQueuedPlaybackBuffers = 96
     private static let lateFrameThresholdMS = 90
     private static let playbackSampleRingCapacity = KV4PVoice.engineFrameSize * 64
-    // Keep RX audio close to live time. If BLE delivers a burst, play slightly
-    // fast by dropping sparse samples; if the queue gets far behind, trim old
-    // audio so the speaker does not lag seconds behind the radio.
-    private static let liveQueuedPlaybackHardCapBuffers = 60
-    private static let liveQueuedPlaybackTrimTargetBuffers = 12
-    private static let liveQueuedPlaybackHardTrimCooldownSeconds: TimeInterval = 3.0
+    // Keep RX audio close to live time. BLE delivery can arrive in bursts, so
+    // drift the player very slightly faster before resorting to emergency trim.
+    private static let livePlaybackRateTargetBuffers = 7
+    private static let livePlaybackRateFullScaleExcessBuffers = 24
+    private static let livePlaybackMaxCatchUpRate: Float = 1.045
+    private static let livePlaybackRateStep: Float = 0.003
+    private static let livePlaybackMinimumRateChange: Float = 0.0005
+    private static let playbackRateLogIntervalSeconds: TimeInterval = 2.5
+    private static let liveQueuedPlaybackHardCapBuffers = 120
+    private static let liveQueuedPlaybackTrimTargetBuffers = 24
+    private static let liveQueuedPlaybackHardTrimCooldownSeconds: TimeInterval = 5.0
     private static let liveLatencySoftCapBuffers = 10
     private static let liveLatencyFastCatchUpBuffers = 16
     private static let liveLatencyHardCapBuffers = 28
