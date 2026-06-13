@@ -47,6 +47,8 @@ final class AppState: ObservableObject {
     private var receiveReadyAfterTransmit = true
     private var transmitRecoveryUntil = Date.distantPast
     private var transmitRecoveryForceReadyAt = Date.distantPast
+    private var lastPTTDownDate = Date.distantPast
+    private var lastPTTUpDate = Date.distantPast
     private var momentaryPTTIntentActive = false
     private var stickyPTTStartArmed = false
     private var needsStateResendAfterReconnect = false
@@ -253,6 +255,7 @@ final class AppState: ObservableObject {
     }
 
     func pttDown() {
+        lastPTTDownDate = Date()
         audio.logDiagnostic("PTT down. connected=\(transportIsConnected) transmitting=\(isTransmitting) recoveryReady=\(transmitRecoverySatisfied)")
         momentaryPTTIntentActive = true
         requestTransmitStart(.momentary)
@@ -321,6 +324,7 @@ final class AppState: ObservableObject {
         let transmitGate = transmitGate
         let audioEngine = audio
         let session = transmitGate.begin()
+        let requestStart = lastPTTDownDate == .distantPast ? Date() : lastPTTDownDate
         do {
             postTransmitRecoveryTask?.cancel()
             postTransmitRecoveryTask = nil
@@ -328,6 +332,9 @@ final class AppState: ObservableObject {
                 ? "PTT on requested; starting microphone capture."
                 : "Retrying microphone capture before PTT on, attempt \(captureAttempt + 1)."
             audio.logDiagnostic("PTT on requested; starting microphone capture attempt=\(captureAttempt + 1)")
+            let commandStart = Date()
+            applySettingsToRadio(ptt: true, rxAudioOpen: true, priority: .urgentDropQueued, waitUntilQueued: true)
+            audio.logDiagnostic("PTT on command queued in \(Self.elapsedMS(since: commandStart)) ms; \(Self.elapsedMS(since: requestStart)) ms after button. Mic capture follows.")
             try audio.startCapture { frame in
                 guard transmitGate.isActive(session) else { return }
                 radioQueue.async {
@@ -357,19 +364,18 @@ final class AppState: ObservableObject {
             receiveReadyAfterTransmit = false
             awaitingRxFrameAfterTransmit = true
             statusLine = "Transmitting."
-            lastDebugLine = "Mic capture is active; PTT on queued. \(audio.currentRouteDebugSummary())"
-            applySettingsToRadio(ptt: true, rxAudioOpen: true, priority: .urgentDropQueued)
+            lastDebugLine = "Mic capture is active after \(Self.elapsedMS(since: requestStart)) ms; PTT on was already queued. \(audio.currentRouteDebugSummary())"
         } catch {
             transmitGate.end()
             isTransmitting = false
             audio.resetCapturePathAfterFailure()
             audio.logDiagnostic("Mic capture start failed attempt=\(captureAttempt + 1): \(error.localizedDescription)")
+            applySettingsToRadio(ptt: false, priority: .urgentDropQueued)
             if shouldRetryCaptureStart(request, attempt: captureAttempt) {
                 scheduleCaptureStartRetry(request, attempt: captureAttempt + 1, error: error)
             } else {
                 clearTransmitStartState(for: request)
                 ensureReceiveAudioActive(reason: "capture start failed", resendPTTOff: true)
-                applySettingsToRadio(ptt: false, priority: .urgentDropQueued)
                 statusLine = error.localizedDescription
             }
         }
@@ -401,6 +407,7 @@ final class AppState: ObservableObject {
             }
             endTransmit()
         } else {
+            lastPTTDownDate = Date()
             stickyPTTStartArmed = true
             requestTransmitStart(.sticky)
         }
@@ -416,6 +423,7 @@ final class AppState: ObservableObject {
         }
         isTransmitting = false
         transmitGate.end()
+        lastPTTUpDate = Date()
         markReceiveRecoveryStarted()
         audio.logDiagnostic("PTT off; leaving radio RX audio requested while microphone tap is removed.")
         applySettingsToRadio(ptt: false, rxAudioOpen: true, priority: .urgentDropQueued, waitUntilQueued: true)
@@ -883,6 +891,11 @@ final class AppState: ObservableObject {
 
         if modeChanged {
             lastDebugLine = "Radio mode \(modeLabel(previousMode)) -> \(modeLabel(state.mode))."
+            if state.mode == .tx, lastPTTDownDate != .distantPast {
+                audio.logDiagnostic("Radio reported TX \(Self.elapsedMS(since: lastPTTDownDate)) ms after app PTT request.")
+            } else if previousMode == .tx, state.mode == .rx, lastPTTUpDate != .distantPast {
+                audio.logDiagnostic("Radio reported RX \(Self.elapsedMS(since: lastPTTUpDate)) ms after app PTT release.")
+            }
         }
         if !isTransmitting, previousMode == .tx, state.mode == .rx {
             receiveReadyAfterTransmit = true
@@ -1211,11 +1224,15 @@ final class AppState: ObservableObject {
         }
     }
 
-    private static let minimumRekeyRecoverySeconds: TimeInterval = 0.45
-    private static let maximumRekeyRecoverySeconds: TimeInterval = 1.2
-    private static let postTransmitRecoveryDelaysMS = [160, 350, 800, 1_500, 2_500]
-    private static let postTransmitPTTOffResendDelayMS = 1_500
-    private static let postTransmitForceReadyDelayMS = 2_500
+    private static func elapsedMS(since date: Date) -> Int {
+        max(0, Int(Date().timeIntervalSince(date) * 1_000))
+    }
+
+    private static let minimumRekeyRecoverySeconds: TimeInterval = 0.2
+    private static let maximumRekeyRecoverySeconds: TimeInterval = 0.75
+    private static let postTransmitRecoveryDelaysMS = [90, 220, 520, 1_000, 1_700]
+    private static let postTransmitPTTOffResendDelayMS = 1_000
+    private static let postTransmitForceReadyDelayMS = 1_700
     private static let maximumCaptureStartRetries = 3
     private static let captureStartRetryDelays: [TimeInterval] = [0.18, 0.45, 0.9]
     private static let beaconRetuneDelaySeconds: TimeInterval = 0.45

@@ -1080,7 +1080,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             preferBuiltInInputIfAvailable(session)
         }
         try? session.setPreferredSampleRate(KV4PVoice.engineSampleRate)
-        try? session.setPreferredIOBufferDuration(Double(Self.frameDurationMS) / 1_000.0)
+        try? session.setPreferredIOBufferDuration(Self.preferredIOBufferDurationSeconds)
         var lastError: Error?
         for attempt in 0..<Self.audioSessionActivationAttempts {
             do {
@@ -1267,7 +1267,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private func compactRouteSummary() -> String {
         let session = AVAudioSession.sharedInstance()
         let output = session.currentRoute.outputs.first?.portType.rawValue ?? "none"
-        return "out \(output), cat \(session.category.rawValue), sess \(session.mode.rawValue), vol \(String(format: "%.2f", session.outputVolume))"
+        return "out \(output), cat \(session.category.rawValue), sess \(session.mode.rawValue), io \(Int(session.ioBufferDuration * 1_000)) ms, vol \(String(format: "%.2f", session.outputVolume))"
     }
 
     private static func gainMultiplier(for setting: String, normal: Float, high: Float) -> Float {
@@ -1368,33 +1368,33 @@ final class KV4PAudioEngine: @unchecked Sendable {
         case capture
     }
 
-    private static let initialPlaybackPrerollBuffers = 3
-    private static let baseRebufferPrerollBuffers = 4
+    private static let initialPlaybackPrerollBuffers = 2
+    private static let baseRebufferPrerollBuffers = 3
     private static let minimumEmergencyStartupPrerollBuffers = 1
     private static let forceArmAfterDecodedFrames = 4
     private static let playbackGraphRecoveryIntervalSeconds: TimeInterval = 0.75
     private static let minimumContinuousPlaybackBuffers = 2
-    private static let maximumAdaptiveRebufferPrerollBuffers = 10
+    private static let maximumAdaptiveRebufferPrerollBuffers = 6
     private static let healthyFramesBeforePrerollStepDown = 75
     private static let frameDurationMS = KV4PVoice.frameDurationMS
     private static let maximumConcealmentFramesPerGap = 2
     private static let underrunConcealmentBurstFrames = 2
     private static let lowWatermarkConcealmentFrames = 1
     private static let maximumConsecutiveConcealmentBursts = 4
-    private static let maximumScheduledPlaybackBuffers = 18
-    private static let maximumQueuedPlaybackBuffers = 96
+    private static let maximumScheduledPlaybackBuffers = 6
+    private static let maximumQueuedPlaybackBuffers = 18
     private static let lateFrameThresholdMS = 90
     private static let playbackSampleRingCapacity = KV4PVoice.engineFrameSize * 64
     // Keep RX audio close to live time. BLE delivery can arrive in bursts, so
     // drift the player very slightly faster before resorting to emergency trim.
-    private static let livePlaybackRateTargetBuffers = 7
-    private static let livePlaybackRateFullScaleExcessBuffers = 24
-    private static let livePlaybackMaxCatchUpRate: Float = 1.045
-    private static let livePlaybackRateStep: Float = 0.003
+    private static let livePlaybackRateTargetBuffers = 4
+    private static let livePlaybackRateFullScaleExcessBuffers = 8
+    private static let livePlaybackMaxCatchUpRate: Float = 1.065
+    private static let livePlaybackRateStep: Float = 0.006
     private static let livePlaybackMinimumRateChange: Float = 0.0005
     private static let playbackRateLogIntervalSeconds: TimeInterval = 2.5
-    private static let liveQueuedPlaybackHardCapBuffers = 120
-    private static let liveQueuedPlaybackTrimTargetBuffers = 24
+    private static let liveQueuedPlaybackHardCapBuffers = 36
+    private static let liveQueuedPlaybackTrimTargetBuffers = 8
     private static let liveQueuedPlaybackHardTrimCooldownSeconds: TimeInterval = 5.0
     private static let liveLatencySoftCapBuffers = 10
     private static let liveLatencyFastCatchUpBuffers = 16
@@ -1406,6 +1406,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private static let renderPeakDecay: Float = 0.995
     private static let renderComfortNoiseAmplitude: Float = 0.0018
     private static let audiblePlaybackPeakThreshold: Float = 0.004
+    private static let preferredIOBufferDurationSeconds: TimeInterval = 0.01
     private static let audioSessionActivationAttempts = 5
     private static let audioSessionRetryDelaySeconds: TimeInterval = 0.18
     private static let inputRouteReadyTimeoutSeconds: TimeInterval = 0.6
