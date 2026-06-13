@@ -65,6 +65,8 @@ struct AppSettings: Codable, Equatable {
     var micGainBoost = "Normal"
     var rxAudioBoost = "High"
     var blePowerDefaultMigrated = false
+    var rxPowerSaveEnabled = false
+    var rxPowerSaveProfile = "Balanced"
 
     init() {}
 
@@ -101,6 +103,8 @@ struct AppSettings: Codable, Equatable {
         micGainBoost = try container.decodeIfPresent(String.self, forKey: .micGainBoost) ?? micGainBoost
         rxAudioBoost = try container.decodeIfPresent(String.self, forKey: .rxAudioBoost) ?? rxAudioBoost
         blePowerDefaultMigrated = try container.decodeIfPresent(Bool.self, forKey: .blePowerDefaultMigrated) ?? blePowerDefaultMigrated
+        rxPowerSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxPowerSaveEnabled) ?? rxPowerSaveEnabled
+        rxPowerSaveProfile = try container.decodeIfPresent(String.self, forKey: .rxPowerSaveProfile) ?? rxPowerSaveProfile
     }
 }
 

@@ -424,6 +424,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             pendingPlaybackBuffers.removeFirst(overflow)
             droppedPlaybackBuffers += overflow
         }
+        trimQueuedPlaybackBacklogIfNeeded()
 
         if !bufferedPlaybackActive {
             let target = hasStartedPlaybackOnce ? adaptiveRebufferPrerollBuffers : Self.initialPlaybackPrerollBuffers
@@ -845,6 +846,35 @@ final class KV4PAudioEngine: @unchecked Sendable {
             player.play()
         }
         logAudio("restarted player queue pending=\(pendingPlaybackBuffers.count) scheduled=\(scheduledPlaybackBuffers) playing=\(player.isPlaying)")
+    }
+
+    private func trimQueuedPlaybackBacklogIfNeeded() {
+        let queuedBuffers = pendingPlaybackBuffers.count + scheduledPlaybackBuffers
+        guard queuedBuffers > Self.liveQueuedPlaybackHardCapBuffers else { return }
+
+        let oldGeneration = playbackGeneration
+        playbackGeneration &+= 1
+        player.stop()
+        scheduledPlaybackBuffers = 0
+        bufferedPlaybackActive = false
+
+        let keepPending = min(Self.liveQueuedPlaybackTrimTargetBuffers, pendingPlaybackBuffers.count)
+        let pendingToDrop = pendingPlaybackBuffers.count - keepPending
+        if pendingToDrop > 0 {
+            pendingPlaybackBuffers.removeFirst(pendingToDrop)
+        }
+
+        let scheduledDropped = max(0, queuedBuffers - pendingPlaybackBuffers.count - pendingToDrop)
+        let droppedBuffers = pendingToDrop + scheduledDropped
+        if droppedBuffers > 0 {
+            droppedPlaybackBuffers += droppedBuffers
+            latencyCatchUpDroppedSamples += droppedBuffers * KV4PVoice.engineFrameSize
+            lastPlaybackGraphRecoveryMessage = "trimmed \(droppedBuffers) stale live buffer(s)"
+        }
+
+        if oldGeneration != playbackGeneration {
+            logAudio("trimmed stale RX playback backlog queued=\(queuedBuffers) dropped=\(droppedBuffers) kept=\(pendingPlaybackBuffers.count)")
+        }
     }
 
     private func trimExcessPlaybackLatencyLocked() {
@@ -1280,31 +1310,33 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private static let initialPlaybackPrerollBuffers = 2
-    private static let baseRebufferPrerollBuffers = 3
+    private static let baseRebufferPrerollBuffers = 2
     private static let minimumEmergencyStartupPrerollBuffers = 1
     private static let forceArmAfterDecodedFrames = 4
     private static let playbackGraphRecoveryIntervalSeconds: TimeInterval = 0.75
     private static let minimumContinuousPlaybackBuffers = 2
-    private static let maximumAdaptiveRebufferPrerollBuffers = 10
+    private static let maximumAdaptiveRebufferPrerollBuffers = 6
     private static let healthyFramesBeforePrerollStepDown = 75
     private static let frameDurationMS = KV4PVoice.frameDurationMS
     private static let maximumConcealmentFramesPerGap = 2
     private static let underrunConcealmentBurstFrames = 2
     private static let lowWatermarkConcealmentFrames = 1
     private static let maximumConsecutiveConcealmentBursts = 4
-    private static let maximumScheduledPlaybackBuffers = 48
-    private static let maximumQueuedPlaybackBuffers = 160
+    private static let maximumScheduledPlaybackBuffers = 6
+    private static let maximumQueuedPlaybackBuffers = 24
     private static let lateFrameThresholdMS = 90
     private static let playbackSampleRingCapacity = KV4PVoice.engineFrameSize * 64
     // Keep RX audio close to live time. If BLE delivers a burst, play slightly
     // fast by dropping sparse samples; if the queue gets far behind, trim old
     // audio so the speaker does not lag seconds behind the radio.
-    private static let liveLatencySoftCapBuffers = 8
-    private static let liveLatencyFastCatchUpBuffers = 12
-    private static let liveLatencyHardCapBuffers = 18
-    private static let liveLatencyTrimTargetBuffers = 10
-    private static let liveLatencySlowCatchUpStride = 24
-    private static let liveLatencyFastCatchUpStride = 12
+    private static let liveQueuedPlaybackHardCapBuffers = 10
+    private static let liveQueuedPlaybackTrimTargetBuffers = 4
+    private static let liveLatencySoftCapBuffers = 5
+    private static let liveLatencyFastCatchUpBuffers = 8
+    private static let liveLatencyHardCapBuffers = 12
+    private static let liveLatencyTrimTargetBuffers = 5
+    private static let liveLatencySlowCatchUpStride = 18
+    private static let liveLatencyFastCatchUpStride = 9
     private static let renderFallbackDecay: Float = 0.992
     private static let renderPeakDecay: Float = 0.995
     private static let renderComfortNoiseAmplitude: Float = 0.0018

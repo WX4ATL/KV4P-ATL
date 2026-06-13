@@ -232,6 +232,13 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(settings.rxAudioBoost, "High")
         XCTAssertFalse(settings.highPower)
         XCTAssertFalse(settings.blePowerDefaultMigrated)
+        XCTAssertFalse(settings.rxPowerSaveEnabled)
+        XCTAssertEqual(settings.rxPowerSaveProfile, "Balanced")
+    }
+
+    func testPowerSaveFlagsUseReservedHostStateBits() {
+        XCTAssertEqual(RadioFlags.rxPowerSave, 1 << 13)
+        XCTAssertEqual(RadioFlags.rxPowerSaveMaximum, 1 << 14)
     }
 
     func testRadioProtocolParsesHelloAndSendsDesiredState() throws {

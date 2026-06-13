@@ -1,7 +1,8 @@
 KV4P/ATL radio power and CPU profiling notes
 
 Version context
-These notes were started during the 0.2.0 development pass.
+These notes were started during the 0.2.0 development pass and updated for
+0.2.1.
 
 Observed USB device
 The connected radio presents to macOS through a Silicon Labs CP2102 USB to UART
@@ -48,6 +49,25 @@ most CPU beyond watchdog task names. Add a future debug command or vendor frame
 that samples FreeRTOS runtime stats using vTaskGetRunTimeStats() over a fixed
 window, then reports task name, runtime counter, percentage, free stack, mode,
 audioOpen, BLE ready state, notification drops, and loop latency maxima.
+
+0.2.1 receive-safe power-save correction
+----------------------------------------
+The first RX power-save attempt tried to suppress ADPCM encoding while the
+firmware believed the radio was squelched. Physical testing showed that receive
+audio could stay muted even with open squelch, so that design was removed before
+acceptance.
+
+The corrected 0.2.1 behavior treats power save as a firmware hint while keeping
+RX audio fail-open:
+
+- The app sends HOST_STATE_RX_POWER_SAVE/HOST_STATE_RX_POWER_SAVE_MAX.
+- The app continues to send HOST_STATE_RX_AUDIO_OPEN.
+- The firmware keeps RX/audio armed while BLE is connected and power save is
+  requested.
+- The firmware slows nonessential device-state reporting during the power-save
+  hint.
+- BLE disconnect clears the transient power-save/audio/PTT flags so the radio
+  cannot stay awake because of a stale phone session.
 
 Power optimization candidates
 - Keep RX audio closed unless a connected central has requested it.

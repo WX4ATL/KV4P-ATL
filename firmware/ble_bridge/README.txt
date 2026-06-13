@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.0.
+Current shared development version: 0.2.1.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -80,6 +80,19 @@ The bridge restarts advertising immediately on disconnect and schedules a
 second restart about 500 ms later from loop(). This follows the Arduino-ESP32
 BLE UART example's delayed advertising restart pattern and makes the radio more
 findable after a central disconnect or a brief post-TX link drop.
+
+RX power-save note
+0.2.1 adds two host-state flags:
+
+  HOST_STATE_RX_POWER_SAVE      (1 << 13)
+  HOST_STATE_RX_POWER_SAVE_MAX  (1 << 14)
+
+The iOS app uses these as firmware hints only. The app still keeps
+HOST_STATE_RX_AUDIO_OPEN set, and the firmware keeps RX/audio fail-open while a
+BLE central is connected. A previous squelch-gated suppression approach was
+rejected after physical open-squelch testing because it could mute receive
+audio; this release therefore slows nonessential reporting but does not suppress
+ADPCM frames based on the squelch flag.
 
 Test order
 1. Build firmware with BLE only on an ESP32 dev board and run a loopback test

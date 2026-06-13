@@ -630,6 +630,12 @@ final class AppState: ObservableObject {
         if settings.filterHigh { flags |= RadioFlags.filterHigh }
         if settings.filterLow { flags |= RadioFlags.filterLow }
         if ptt ?? isTransmitting { flags |= RadioFlags.pttRequested }
+        if settings.rxPowerSaveEnabled {
+            flags |= RadioFlags.rxPowerSave
+            if settings.rxPowerSaveProfile == "Maximum" {
+                flags |= RadioFlags.rxPowerSaveMaximum
+            }
+        }
 
         let state = HostDesiredState(
             sequence: 0,
@@ -1386,4 +1392,6 @@ enum RadioFlags {
     static let filterLow: UInt16 = 1 << 7
     static let txAllowed: UInt16 = 1 << 11
     static let enableStatusReports: UInt16 = 1 << 12
+    static let rxPowerSave: UInt16 = 1 << 13
+    static let rxPowerSaveMaximum: UInt16 = 1 << 14
 }

@@ -17,8 +17,15 @@ struct SettingsView: View {
                         if !isSticky, app.isTransmitting {
                             app.endTransmit()
                         }
-                    }
+                }
                 Toggle("High power", isOn: $app.settings.highPower)
+                Toggle("RX power save", isOn: $app.settings.rxPowerSaveEnabled)
+                if app.settings.rxPowerSaveEnabled {
+                    Picker("Power save profile", selection: $app.settings.rxPowerSaveProfile) {
+                        Text("Balanced").tag("Balanced")
+                        Text("Maximum").tag("Maximum")
+                    }
+                }
                 Picker("Bandwidth", selection: $app.settings.bandwidth) {
                     Text("25kHz").tag("25kHz")
                     Text("12.5kHz").tag("12.5kHz")
@@ -113,7 +120,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.0")
+                LabeledContent("App version", value: "0.2.1")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
