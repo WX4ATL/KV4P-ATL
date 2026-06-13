@@ -52,35 +52,45 @@ struct SettingsView: View {
             Section("APRS") {
                 TextField("Your callsign", text: $app.settings.callsign)
                     .textInputAutocapitalization(.characters)
-                Text("Location beacons")
-                    .font(.subheadline.weight(.semibold))
-                Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
-                    .onChange(of: app.settings.beaconPosition) { _, enabled in
-                        app.saveSettings()
-                        if enabled {
-                            app.preparePositionBeaconing()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    aprsSubheader("Location beacons")
+                    Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
+                        .onChange(of: app.settings.beaconPosition) { _, enabled in
+                            app.saveSettings()
+                            if enabled {
+                                app.preparePositionBeaconing()
+                            }
                         }
-                    }
-                Toggle("Automatic beacons", isOn: $app.settings.autoBeaconEnabled)
-                Text("Location accuracy")
-                    .font(.subheadline.weight(.semibold))
-                Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
-                    Text("Exact").tag("Exact")
-                    Text("Approximate").tag("Approx")
+                    Toggle("Automatic beacons", isOn: $app.settings.autoBeaconEnabled)
                 }
-                .pickerStyle(.segmented)
+                .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    aprsSubheader("Location accuracy")
+                    Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
+                        Text("Exact").tag("Exact")
+                        Text("Approximate").tag("Approx")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                .padding(.vertical, 4)
+
                 DurationInputRow(
                     title: "Beacon interval",
                     seconds: $app.settings.beaconIntervalSeconds,
                     allowedRange: 60...86_400,
                     defaultUnit: .minutes
                 )
+
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Beacon status comment")
-                        .font(.subheadline.weight(.semibold))
+                    aprsSubheader("Beacon status comment")
                     TextField("Type your own status", text: $app.settings.aprsStatusComment)
                         .textInputAutocapitalization(.sentences)
                 }
+                .padding(.vertical, 4)
+
                 Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
                     Text("Current").tag("Current")
                     Text("144.3900").tag("144.3900")
@@ -102,15 +112,17 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-            }
 
-            Section("APRS Packet Retention") {
-                DurationInputRow(
-                    title: "Delete packets older than",
-                    seconds: $app.settings.packetRetentionSeconds,
-                    allowedRange: 60...604_800,
-                    defaultUnit: .hours
-                )
+                VStack(alignment: .leading, spacing: 10) {
+                    aprsSubheader("APRS packet retention")
+                    DurationInputRow(
+                        title: "Delete packets older than",
+                        seconds: $app.settings.packetRetentionSeconds,
+                        allowedRange: 60...604_800,
+                        defaultUnit: .hours
+                    )
+                }
+                .padding(.vertical, 4)
             }
 
             Section("Limits") {
@@ -159,6 +171,12 @@ struct SettingsView: View {
         .onChange(of: app.settings) { _, _ in
             app.saveSettings()
         }
+    }
+
+    private func aprsSubheader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 
 }

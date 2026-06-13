@@ -7,7 +7,6 @@ enum APRSSection: String, CaseIterable {
     case messages = "Messages"
     case beacons = "Beacons"
     case packets = "Packets"
-    case settings = "Settings"
 }
 
 struct APRSChatView: View {
@@ -38,8 +37,6 @@ struct APRSChatView: View {
                         beaconList
                     case .packets:
                         packetList
-                    case .settings:
-                        aprsSettingsPanel
                     }
                 }
                 .padding()
@@ -110,72 +107,6 @@ struct APRSChatView: View {
             emptySystemImage: "doc.plaintext",
             emptyDescription: "Every decoded AX.25/APRS packet will appear here."
         )
-    }
-
-    private var aprsSettingsPanel: some View {
-        KV4PCard("APRS Settings", systemImage: "slider.horizontal.3") {
-            VStack(alignment: .leading, spacing: 14) {
-                TextField("Your callsign", text: $app.settings.callsign)
-                    .textInputAutocapitalization(.characters)
-                    .textFieldStyle(.roundedBorder)
-
-                Text("Location beacons")
-                    .font(.subheadline.weight(.semibold))
-                Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
-                    .onChange(of: app.settings.beaconPosition) { _, enabled in
-                        app.saveSettings()
-                        if enabled { app.preparePositionBeaconing() }
-                    }
-                Toggle("Automatic location beacons", isOn: $app.settings.autoBeaconEnabled)
-                Text("Location accuracy")
-                    .font(.subheadline.weight(.semibold))
-                Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
-                    Text("Exact").tag("Exact")
-                    Text("Approximate").tag("Approx")
-                }
-                .pickerStyle(.segmented)
-
-                DurationInputRow(
-                    title: "Beacon interval",
-                    seconds: $app.settings.beaconIntervalSeconds,
-                    allowedRange: 60...86_400,
-                    defaultUnit: .minutes
-                )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Beacon status comment")
-                        .font(.subheadline.weight(.semibold))
-                    TextField("Type your own status", text: $app.settings.aprsStatusComment)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
-                    Text("Current frequency").tag("Current")
-                    Text("144.3900").tag("144.3900")
-                    Text("144.5750").tag("144.5750")
-                    Text("144.8000").tag("144.8000")
-                    Text("145.8250").tag("145.8250")
-                }
-
-                Picker("APRS icon", selection: $app.settings.aprsIcon) {
-                    Text("Phone").tag("Phone")
-                    Text("Person").tag("Person")
-                    Text("House").tag("House")
-                    Text("Car").tag("Car")
-                }
-
-                Toggle("Digipeat packets", isOn: $app.settings.digipeatPackets)
-                Toggle("Expose standard BLE KISS TNC", isOn: $app.settings.exposeKISSTNC)
-                if app.settings.exposeKISSTNC {
-                    Text("KV4P/ATL must disconnect from the radio before another APRS app can see the BLE KISS TNC. If KV4P/ATL reconnects while another app is using the radio, one app may be disconnected.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .onChange(of: app.settings) { _, _ in
-                app.saveSettings()
-            }
-        }
     }
 
     private func packetRows(_ messages: [APRSMessage], emptyTitle: String, emptySystemImage: String, emptyDescription: String) -> some View {
