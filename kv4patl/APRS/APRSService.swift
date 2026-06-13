@@ -5,6 +5,7 @@ import Foundation
 enum APRSMessageType: String, Codable {
     case message
     case position
+    case micE
     case weather
     case object
     case item
@@ -13,6 +14,10 @@ enum APRSMessageType: String, Codable {
     case query
     case thirdParty
     case capability
+    case userDefined
+    case gps
+    case directionFinding
+    case invalid
     case raw
 }
 
@@ -95,61 +100,109 @@ struct APRSService {
     func parse(packet: AX25Packet) -> APRSMessage {
         let body = String(decoding: packet.information, as: UTF8.self)
         let relay = packet.digipeaters.first(where: { $0.hasBeenRepeated })?.display
+        return parseInfo(
+            body,
+            source: packet.source.display,
+            destination: packet.destination.display,
+            destinationAddress: packet.destination,
+            relay: relay,
+            timestamp: Date(),
+            depth: 0
+        )
+    }
+
+    private func parseInfo(
+        _ body: String,
+        source: String,
+        destination: String,
+        destinationAddress: AX25Address?,
+        relay: String?,
+        timestamp: Date,
+        depth: Int
+    ) -> APRSMessage {
 
         guard let dataType = body.first else {
-            return APRSMessage(type: .raw, from: packet.source.display, to: packet.destination.display, body: body, timestamp: Date(), relay: relay)
+            return APRSMessage(type: .raw, from: source, to: destination, body: body, timestamp: timestamp, relay: relay)
         }
 
         if dataType == ":" {
-            let toStart = body.index(after: body.startIndex)
-            let toEnd = body.index(toStart, offsetBy: min(9, body.distance(from: toStart, to: body.endIndex)), limitedBy: body.endIndex) ?? body.endIndex
-            let to = String(body[toStart..<toEnd]).trimmingCharacters(in: .whitespaces)
-            let hasSeparator = toEnd < body.endIndex && body[toEnd] == ":"
-            let messageStart = hasSeparator ? body.index(after: toEnd) : toEnd
-            let text = String(body[messageStart...])
-            return APRSMessage(type: .message, from: packet.source.display, to: to, body: text, timestamp: Date(), relay: relay, acknowledged: text.contains("{"))
+            let parsed = parseMessageInfo(body)
+            return APRSMessage(type: .message, from: source, to: parsed.to, body: parsed.text, timestamp: timestamp, relay: relay, acknowledged: parsed.acknowledged)
         }
 
         if dataType == "!" || dataType == "=" || dataType == "/" || dataType == "@" {
             let parsed = parsePositionInfo(body)
-            return APRSMessage(type: .position, from: packet.source.display, to: packet.destination.display, body: parsed.comment, timestamp: Date(), latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            let type: APRSMessageType = parsed.symbol?.code == "_" ? .weather : .position
+            return APRSMessage(type: type, from: source, to: destination, body: parsed.comment, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
         }
 
         if dataType == ";" {
             let parsed = parseObjectInfo(body)
-            return APRSMessage(type: .object, from: packet.source.display, to: packet.destination.display, body: parsed.text, timestamp: Date(), latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .object, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
         }
 
         if dataType == ")" {
             let parsed = parseItemInfo(body)
-            return APRSMessage(type: .item, from: packet.source.display, to: packet.destination.display, body: parsed.text, timestamp: Date(), latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .item, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
         }
 
         if dataType == ">" {
-            return APRSMessage(type: .status, from: packet.source.display, to: packet.destination.display, body: String(body.dropFirst()), timestamp: Date(), relay: relay)
+            return APRSMessage(type: .status, from: source, to: destination, body: parseStatusInfo(body), timestamp: timestamp, relay: relay)
         }
 
         if dataType == "_" {
-            return APRSMessage(type: .weather, from: packet.source.display, to: packet.destination.display, body: String(body.dropFirst()), timestamp: Date(), relay: relay)
+            return APRSMessage(type: .weather, from: source, to: destination, body: parseWeatherReport(String(body.dropFirst())), timestamp: timestamp, relay: relay)
+        }
+
+        if dataType == "#" || dataType == "*" {
+            return APRSMessage(type: .weather, from: source, to: destination, body: "raw weather - \(String(body.dropFirst()))", timestamp: timestamp, relay: relay)
         }
 
         if dataType == "T" && body.hasPrefix("T#") {
-            return APRSMessage(type: .telemetry, from: packet.source.display, to: packet.destination.display, body: body, timestamp: Date(), relay: relay)
+            return APRSMessage(type: .telemetry, from: source, to: destination, body: parseTelemetryInfo(body), timestamp: timestamp, relay: relay)
         }
 
         if dataType == "?" {
-            return APRSMessage(type: .query, from: packet.source.display, to: packet.destination.display, body: String(body.dropFirst()), timestamp: Date(), relay: relay)
+            return APRSMessage(type: .query, from: source, to: destination, body: String(body.dropFirst()), timestamp: timestamp, relay: relay)
         }
 
         if dataType == "}" {
-            return APRSMessage(type: .thirdParty, from: packet.source.display, to: packet.destination.display, body: String(body.dropFirst()), timestamp: Date(), relay: relay)
+            let parsed = parseThirdPartyInfo(body, relay: relay, timestamp: timestamp, depth: depth)
+            return APRSMessage(type: .thirdParty, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
         }
 
         if dataType == "<" {
-            return APRSMessage(type: .capability, from: packet.source.display, to: packet.destination.display, body: String(body.dropFirst()), timestamp: Date(), relay: relay)
+            return APRSMessage(type: .capability, from: source, to: destination, body: String(body.dropFirst()), timestamp: timestamp, relay: relay)
         }
 
-        return APRSMessage(type: .raw, from: packet.source.display, to: packet.destination.display, body: body, timestamp: Date(), relay: relay)
+        if dataType == "{" {
+            return APRSMessage(type: .userDefined, from: source, to: destination, body: parseUserDefinedInfo(body), timestamp: timestamp, relay: relay)
+        }
+
+        if dataType == "$" {
+            let parsed = parseNMEAInfo(body)
+            return APRSMessage(type: .gps, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay)
+        }
+
+        if dataType == "%" {
+            return APRSMessage(type: .directionFinding, from: source, to: destination, body: String(body.dropFirst()), timestamp: timestamp, relay: relay)
+        }
+
+        if dataType == "[" {
+            let parsed = parseMaidenheadInfo(body)
+            return APRSMessage(type: .position, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay)
+        }
+
+        if dataType == "," {
+            return APRSMessage(type: .invalid, from: source, to: destination, body: "invalid/test data - \(String(body.dropFirst()))", timestamp: timestamp, relay: relay)
+        }
+
+        if isMicEDataType(dataType), let destinationAddress {
+            let parsed = parseMicEInfo(body, destination: destinationAddress)
+            return APRSMessage(type: .micE, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+        }
+
+        return APRSMessage(type: .raw, from: source, to: destination, body: body, timestamp: timestamp, relay: relay)
     }
 
     private func makePacket(source: String, destination: String, digipeaters: [String], info: String) throws -> AX25Packet {
@@ -177,17 +230,35 @@ struct APRSService {
         return String(format: "%03d%05.2f%@", degrees, minutes, hemisphere)
     }
 
-    private func parsePositionInfo(_ body: String) -> (latitude: Double?, longitude: Double?, comment: String, symbol: APRSSymbol?) {
+    private func parseMessageInfo(_ body: String) -> (to: String, text: String, acknowledged: Bool) {
+        let toStart = body.index(after: body.startIndex)
+        let toEnd = body.index(toStart, offsetBy: min(9, body.distance(from: toStart, to: body.endIndex)), limitedBy: body.endIndex) ?? body.endIndex
+        let to = String(body[toStart..<toEnd]).trimmingCharacters(in: .whitespaces)
+        let hasSeparator = toEnd < body.endIndex && body[toEnd] == ":"
+        let messageStart = hasSeparator ? body.index(after: toEnd) : toEnd
+        let text = String(body[messageStart...])
+
+        if to.hasPrefix("BLN") {
+            return (to, "bulletin \(to) - \(text)", text.contains("{"))
+        }
+        if text.hasPrefix("ack") || text.hasPrefix("rej") {
+            return (to, "message \(text)", true)
+        }
+        return (to, text, text.contains("{"))
+    }
+
+    private func parsePositionInfo(_ body: String) -> ParsedPosition {
         let offset = (body.first == "/" || body.first == "@") ? 8 : 1
-        return parseUncompressedPosition(body, start: offset, fallback: body)
+        return parsePositionBody(body, start: offset, fallback: body)
     }
 
     private func parseObjectInfo(_ body: String) -> (latitude: Double?, longitude: Double?, text: String, symbol: APRSSymbol?) {
-        guard body.count >= 11 else { return (nil, nil, body, nil) }
         let chars = Array(body)
+        guard chars.count >= 11 else { return (nil, nil, body, nil) }
         let name = String(chars[1..<min(10, chars.count)]).trimmingCharacters(in: .whitespaces)
-        let parsed = parseUncompressedPosition(body, start: 11, fallback: body)
         let state = chars.count > 10 && chars[10] == "_" ? "deleted" : "live"
+        let hasTimestamp = chars.count >= 18 && isAPRSTimestamp(chars, start: 11)
+        let parsed = parsePositionBody(body, start: hasTimestamp ? 18 : 11, fallback: body)
         let text = [name, state, parsed.comment]
             .filter { !$0.isEmpty }
             .joined(separator: " - ")
@@ -201,7 +272,7 @@ struct APRSService {
             return (nil, nil, body, nil)
         }
         let name = String(chars[1..<marker]).trimmingCharacters(in: .whitespaces)
-        let parsed = parseUncompressedPosition(body, start: marker + 1, fallback: body)
+        let parsed = parsePositionBody(body, start: marker + 1, fallback: body)
         let state = chars[marker] == "_" ? "deleted" : "live"
         let text = [name, state, parsed.comment]
             .filter { !$0.isEmpty }
@@ -209,31 +280,466 @@ struct APRSService {
         return (parsed.latitude, parsed.longitude, text, parsed.symbol)
     }
 
-    private func parseUncompressedPosition(_ body: String, start: Int, fallback: String) -> (latitude: Double?, longitude: Double?, comment: String, symbol: APRSSymbol?) {
-        guard body.count >= start + 19 else { return (nil, nil, fallback, nil) }
+    private func parsePositionBody(_ body: String, start: Int, fallback: String) -> ParsedPosition {
+        if let uncompressed = parseUncompressedPosition(body, start: start) {
+            return uncompressed
+        }
+        if let compressed = parseCompressedPosition(body, start: start) {
+            return compressed
+        }
+        return ParsedPosition(latitude: nil, longitude: nil, comment: fallback, symbol: nil)
+    }
+
+    private func parseUncompressedPosition(_ body: String, start: Int) -> ParsedPosition? {
         let chars = Array(body)
+        guard chars.count >= start + 19 else { return nil }
         let latString = String(chars[start..<start + 8])
-        let symbolTable = chars[start + 8]
         let lonString = String(chars[start + 9..<start + 18])
+        guard let latitude = parseLatitude(latString),
+              let longitude = parseLongitude(lonString) else { return nil }
+        let symbolTable = chars[start + 8]
         let symbolCode = chars[start + 18]
-        let comment = body.count > start + 19 ? String(chars.dropFirst(start + 19)) : ""
-        return (parseLatitude(latString), parseLongitude(lonString), comment, APRSSymbol(table: symbolTable, code: symbolCode))
+        let rawComment = chars.count > start + 19 ? String(chars.dropFirst(start + 19)) : ""
+        let comment = summarizePositionComment(rawComment, symbolCode: symbolCode)
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: comment, symbol: APRSSymbol(table: symbolTable, code: symbolCode))
+    }
+
+    private func parseCompressedPosition(_ body: String, start: Int) -> ParsedPosition? {
+        let chars = Array(body)
+        guard chars.count >= start + 13 else { return nil }
+        let symbolTable = chars[start]
+        let latChars = Array(chars[start + 1..<start + 5])
+        let lonChars = Array(chars[start + 5..<start + 9])
+        let symbolCode = chars[start + 9]
+        guard let latValue = base91(latChars),
+              let lonValue = base91(lonChars) else { return nil }
+
+        let latitude = 90.0 - Double(latValue) / 380_926.0
+        let longitude = -180.0 + Double(lonValue) / 190_463.0
+        var details: [String] = []
+        if let courseValue = base91(chars[start + 10]),
+           let speedValue = base91(chars[start + 11]),
+           courseValue >= 0,
+           courseValue < 90 {
+            let course = courseValue * 4
+            let speed = max(0, Int(pow(1.08, Double(speedValue)).rounded()) - 1)
+            details.append("course \(course) deg")
+            details.append("speed \(speed) kt")
+        }
+
+        let rawComment = chars.count > start + 13 ? String(chars.dropFirst(start + 13)) : ""
+        let comment = joinDetails(details, with: summarizePositionComment(rawComment, symbolCode: symbolCode))
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: comment, symbol: APRSSymbol(table: symbolTable, code: symbolCode))
+    }
+
+    private func summarizePositionComment(_ rawComment: String, symbolCode: Character) -> String {
+        var comment = rawComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        var details: [String] = []
+
+        if comment.count >= 7 {
+            let prefix = String(comment.prefix(7))
+            let parts = prefix.split(separator: "/", maxSplits: 1).map(String.init)
+            if parts.count == 2,
+               parts[0].count == 3,
+               parts[1].count == 3,
+               let course = Int(parts[0]),
+               let speed = Int(parts[1]) {
+                details.append("course \(course) deg")
+                details.append("speed \(speed) kt")
+                comment.removeFirst(7)
+            }
+        }
+
+        if comment.hasPrefix("PHG"), comment.count >= 7 {
+            details.append("PHG \(String(comment.prefix(7)))")
+            comment.removeFirst(7)
+        }
+
+        if comment.hasPrefix("RNG"), comment.count >= 7 {
+            let value = String(comment.dropFirst(3).prefix(4))
+            if let range = Int(value) {
+                details.append("range \(range) mi")
+                comment.removeFirst(7)
+            }
+        }
+
+        if let altitude = extractAltitude(from: &comment) {
+            details.append("altitude \(altitude) ft")
+        }
+
+        if symbolCode == "_" {
+            let weather = parseWeatherReport(comment)
+            if weather != comment {
+                comment = weather
+            }
+        }
+
+        return joinDetails(details, with: comment.trimmingCharacters(in: CharacterSet(charactersIn: " /,\t\r\n")))
+    }
+
+    private func extractAltitude(from comment: inout String) -> Int? {
+        guard let range = comment.range(of: #"/A=-?[0-9]{6}"#, options: .regularExpression) else { return nil }
+        let token = String(comment[range])
+        comment.removeSubrange(range)
+        return Int(token.replacingOccurrences(of: "/A=", with: ""))
+    }
+
+    private func parseStatusInfo(_ body: String) -> String {
+        let text = String(body.dropFirst())
+        let chars = Array(text)
+        if chars.count >= 7, isAPRSTimestamp(chars, start: 0) {
+            return String(chars.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return text
+    }
+
+    private func parseWeatherReport(_ text: String) -> String {
+        let chars = Array(text)
+        var fields: [String] = []
+        let widths: [Character: Int] = ["c": 3, "s": 3, "g": 3, "t": 3, "r": 3, "p": 3, "P": 3, "h": 2, "b": 5, "L": 3, "l": 3, "X": 3]
+        var index = 0
+
+        while index < chars.count {
+            let key = chars[index]
+            guard let width = widths[key], index + width < chars.count else {
+                index += 1
+                continue
+            }
+            let value = String(chars[(index + 1)...(index + width)])
+            guard value.allSatisfy({ $0.isNumber || $0 == "." || $0 == "-" }) else {
+                index += 1
+                continue
+            }
+            switch key {
+            case "c":
+                fields.append("wind \(value) deg")
+            case "s":
+                fields.append("wind \(Int(value) ?? 0) kt")
+            case "g":
+                fields.append("gust \(Int(value) ?? 0) kt")
+            case "t":
+                fields.append("temp \(Int(value) ?? 0) F")
+            case "r":
+                fields.append("rain 1h \(hundredths(value)) in")
+            case "p":
+                fields.append("rain 24h \(hundredths(value)) in")
+            case "P":
+                fields.append("rain since midnight \(hundredths(value)) in")
+            case "h":
+                fields.append("humidity \(value == "00" ? "100" : value)%")
+            case "b":
+                if let pressure = Double(value) {
+                    fields.append(String(format: "pressure %.1f mb", pressure / 10.0))
+                }
+            case "L", "l":
+                fields.append("luminosity \(value)")
+            case "X":
+                fields.append("radiation \(value)")
+            default:
+                break
+            }
+            index += width + 1
+        }
+
+        return fields.isEmpty ? text : fields.joined(separator: ", ")
+    }
+
+    private func parseTelemetryInfo(_ body: String) -> String {
+        let payload = String(body.dropFirst(2))
+        let parts = payload.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2 else { return body }
+        let sequence = parts[0]
+        let analog = parts.dropFirst().prefix(5).filter { !$0.isEmpty }
+        let digital = parts.count > 6 ? parts[6] : ""
+        let comment = parts.count > 7 ? parts.dropFirst(7).joined(separator: ",") : ""
+        var fields = ["seq \(sequence)"]
+        if !analog.isEmpty {
+            fields.append("channels \(analog.joined(separator: "/"))")
+        }
+        if !digital.isEmpty {
+            fields.append("bits \(digital)")
+        }
+        return joinDetails(fields, with: comment)
+    }
+
+    private func parseThirdPartyInfo(_ body: String, relay: String?, timestamp: Date, depth: Int) -> ParsedPosition {
+        let inner = String(body.dropFirst())
+        guard depth < 2,
+              let headerEnd = inner.firstIndex(of: ":"),
+              let sourceEnd = inner.firstIndex(of: ">"),
+              sourceEnd < headerEnd else {
+            return ParsedPosition(latitude: nil, longitude: nil, comment: inner, symbol: nil)
+        }
+
+        let source = String(inner[..<sourceEnd])
+        let path = String(inner[inner.index(after: sourceEnd)..<headerEnd])
+        let parts = path.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        let destination = parts.first ?? ""
+        let info = String(inner[inner.index(after: headerEnd)...])
+        let parsed = parseInfo(info, source: source, destination: destination, destinationAddress: nil, relay: relay, timestamp: timestamp, depth: depth + 1)
+        let prefix = "\(source)>\(destination)"
+        return ParsedPosition(latitude: parsed.latitude, longitude: parsed.longitude, comment: "\(prefix): \(parsed.type.rawValue) - \(parsed.body)", symbol: parsed.symbol)
+    }
+
+    private func parseUserDefinedInfo(_ body: String) -> String {
+        let payload = String(body.dropFirst())
+        guard let userID = payload.first else { return "" }
+        let rest = String(payload.dropFirst())
+        return "user \(userID) - \(rest)"
+    }
+
+    private func parseNMEAInfo(_ body: String) -> (latitude: Double?, longitude: Double?, body: String) {
+        let fields = body.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        guard let sentence = fields.first else { return (nil, nil, body) }
+
+        if sentence.hasSuffix("GGA"), fields.count > 9,
+           let latitude = parseNMEACoordinate(fields[2], hemisphere: fields[3], degreeDigits: 2),
+           let longitude = parseNMEACoordinate(fields[4], hemisphere: fields[5], degreeDigits: 3) {
+            let altitude = fields[9].isEmpty ? "" : ", altitude \(fields[9]) m"
+            return (latitude, longitude, "GPS fix\(altitude)")
+        }
+
+        if sentence.hasSuffix("RMC"), fields.count > 8,
+           let latitude = parseNMEACoordinate(fields[3], hemisphere: fields[4], degreeDigits: 2),
+           let longitude = parseNMEACoordinate(fields[5], hemisphere: fields[6], degreeDigits: 3) {
+            let speed = fields[7].isEmpty ? "" : ", speed \(fields[7]) kt"
+            let course = fields[8].isEmpty ? "" : ", course \(fields[8]) deg"
+            return (latitude, longitude, "GPS fix\(speed)\(course)")
+        }
+
+        return (nil, nil, "raw GPS - \(body)")
+    }
+
+    private func parseMaidenheadInfo(_ body: String) -> (latitude: Double?, longitude: Double?, body: String) {
+        let payload = String(body.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        let grid = String(payload.prefix(6)).uppercased()
+        guard grid.count >= 4,
+              let coordinate = maidenheadCenter(grid) else {
+            return (nil, nil, payload)
+        }
+        let suffix = payload.count > grid.count ? " - \(String(payload.dropFirst(grid.count)).trimmingCharacters(in: .whitespaces))" : ""
+        return (coordinate.latitude, coordinate.longitude, "Maidenhead \(grid)\(suffix)")
+    }
+
+    private func parseMicEInfo(_ body: String, destination: AX25Address) -> ParsedPosition {
+        let info = Array(body)
+        guard info.count >= 9,
+              let latitude = parseMicELatitude(destination.callsign),
+              let longitude = parseMicELongitude(info, destination: destination.callsign) else {
+            return ParsedPosition(latitude: nil, longitude: nil, comment: "Mic-E \(String(body.dropFirst()))", symbol: nil)
+        }
+
+        let speedCourse = parseMicESpeedCourse(info)
+        var details = ["Mic-E"]
+        if let speedCourse {
+            details.append("course \(speedCourse.course) deg")
+            details.append("speed \(speedCourse.speed) kt")
+        }
+        let symbol = APRSSymbol(table: info[8], code: info[7])
+        let comment = info.count > 9 ? String(info.dropFirst(9)).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: joinDetails(details, with: comment), symbol: symbol)
     }
 
     private func parseLatitude(_ text: String) -> Double? {
-        guard text.count == 8,
-              let degrees = Double(text.prefix(2)),
-              let minutes = Double(text.dropFirst(2).prefix(5)) else { return nil }
-        let sign = text.last == "S" ? -1.0 : 1.0
+        guard text.count == 8 else { return nil }
+        let chars = Array(text)
+        guard chars[7] == "N" || chars[7] == "S" else { return nil }
+        let normalized = text.replacingOccurrences(of: " ", with: "0")
+        guard let degrees = Double(normalized.prefix(2)),
+              let minutes = Double(normalized.dropFirst(2).prefix(5)) else { return nil }
+        let sign = chars[7] == "S" ? -1.0 : 1.0
         return sign * (degrees + minutes / 60.0)
     }
 
     private func parseLongitude(_ text: String) -> Double? {
-        guard text.count == 9,
-              let degrees = Double(text.prefix(3)),
-              let minutes = Double(text.dropFirst(3).prefix(5)) else { return nil }
-        let sign = text.last == "W" ? -1.0 : 1.0
+        guard text.count == 9 else { return nil }
+        let chars = Array(text)
+        guard chars[8] == "E" || chars[8] == "W" else { return nil }
+        let normalized = text.replacingOccurrences(of: " ", with: "0")
+        guard let degrees = Double(normalized.prefix(3)),
+              let minutes = Double(normalized.dropFirst(3).prefix(5)) else { return nil }
+        let sign = chars[8] == "W" ? -1.0 : 1.0
         return sign * (degrees + minutes / 60.0)
+    }
+
+    private func parseNMEACoordinate(_ value: String, hemisphere: String, degreeDigits: Int) -> Double? {
+        guard value.count > degreeDigits,
+              let degrees = Double(value.prefix(degreeDigits)),
+              let minutes = Double(value.dropFirst(degreeDigits)) else { return nil }
+        let sign = (hemisphere == "S" || hemisphere == "W") ? -1.0 : 1.0
+        return sign * (degrees + minutes / 60.0)
+    }
+
+    private func maidenheadCenter(_ grid: String) -> CLLocationCoordinate2D? {
+        let chars = Array(grid.uppercased())
+        guard chars.count >= 4,
+              let fieldLon = letterIndex(chars[0], in: "ABCDEFGHIJKLMNOPQR"),
+              let fieldLat = letterIndex(chars[1], in: "ABCDEFGHIJKLMNOPQR"),
+              let squareLon = chars[2].wholeNumberValue,
+              let squareLat = chars[3].wholeNumberValue else { return nil }
+
+        var longitude = Double(fieldLon) * 20.0 - 180.0 + Double(squareLon) * 2.0
+        var latitude = Double(fieldLat) * 10.0 - 90.0 + Double(squareLat)
+        var cellWidth = 2.0
+        var cellHeight = 1.0
+
+        if chars.count >= 6,
+           let subLon = letterIndex(chars[4], in: "ABCDEFGHIJKLMNOPQRSTUVWX"),
+           let subLat = letterIndex(chars[5], in: "ABCDEFGHIJKLMNOPQRSTUVWX") {
+            cellWidth = 5.0 / 60.0
+            cellHeight = 2.5 / 60.0
+            longitude += Double(subLon) * cellWidth
+            latitude += Double(subLat) * cellHeight
+        }
+
+        return CLLocationCoordinate2D(latitude: latitude + cellHeight / 2.0, longitude: longitude + cellWidth / 2.0)
+    }
+
+    private func parseMicELatitude(_ destination: String) -> Double? {
+        let chars = Array(destination.padding(toLength: 6, withPad: "0", startingAt: 0))
+        guard chars.count >= 6,
+              let d0 = micEDigit(chars[0]),
+              let d1 = micEDigit(chars[1]),
+              let m0 = micEDigit(chars[2]),
+              let m1 = micEDigit(chars[3]),
+              let h0 = micEDigit(chars[4]),
+              let h1 = micEDigit(chars[5]) else { return nil }
+
+        let degrees = Double(d0 * 10 + d1)
+        let minutes = Double(m0 * 10 + m1) + Double(h0 * 10 + h1) / 100.0
+        let sign = micEFlagIsHigh(chars[3]) ? 1.0 : -1.0
+        return sign * (degrees + minutes / 60.0)
+    }
+
+    private func parseMicELongitude(_ info: [Character], destination: String) -> Double? {
+        let chars = Array(destination.padding(toLength: 6, withPad: "0", startingAt: 0))
+        guard info.count > 3,
+              chars.count >= 6,
+              var degrees = micEByte(info[1]),
+              var minutes = micEByte(info[2]),
+              var hundredths = micEByte(info[3]) else { return nil }
+
+        if micEFlagIsHigh(chars[4]) {
+            degrees += 100
+        }
+        if degrees >= 180 {
+            degrees -= 80
+        }
+        if minutes >= 60 {
+            minutes -= 60
+        }
+        if hundredths >= 60 {
+            hundredths -= 60
+        }
+        guard (0...179).contains(degrees),
+              (0...59).contains(minutes),
+              (0...99).contains(hundredths) else { return nil }
+
+        let longitude = Double(degrees) + (Double(minutes) + Double(hundredths) / 100.0) / 60.0
+        return micEFlagIsHigh(chars[5]) ? -longitude : longitude
+    }
+
+    private func parseMicESpeedCourse(_ info: [Character]) -> (speed: Int, course: Int)? {
+        guard info.count > 6,
+              let sp = micEByte(info[4]),
+              let dc = micEByte(info[5]),
+              let se = micEByte(info[6]) else { return nil }
+        var speed = sp * 10 + dc / 10
+        var course = (dc % 10) * 100 + se
+        if speed >= 800 {
+            speed -= 800
+        }
+        if course >= 400 {
+            course -= 400
+        }
+        return (speed, course)
+    }
+
+    private func micEDigit(_ char: Character) -> Int? {
+        guard let value = ascii(char) else { return nil }
+        switch value {
+        case 48...57:
+            return Int(value - 48)
+        case 65...74:
+            return Int(value - 65)
+        case 80...89:
+            return Int(value - 80)
+        default:
+            return nil
+        }
+    }
+
+    private func micEFlagIsHigh(_ char: Character) -> Bool {
+        guard let value = ascii(char) else { return false }
+        return (65...90).contains(value)
+    }
+
+    private func micEByte(_ char: Character) -> Int? {
+        guard let value = ascii(char) else { return nil }
+        return Int(value) - 28
+    }
+
+    private func isMicEDataType(_ char: Character) -> Bool {
+        if char == "`" || char == "'" { return true }
+        guard let value = ascii(char) else { return false }
+        return value == 0x1C || value == 0x1D
+    }
+
+    private func isAPRSTimestamp(_ chars: [Character], start: Int) -> Bool {
+        guard chars.count >= start + 7 else { return false }
+        let numeric = chars[start..<(start + 6)].allSatisfy { $0.isNumber }
+        let suffix = chars[start + 6]
+        return numeric && (suffix == "z" || suffix == "/" || suffix == "h")
+    }
+
+    private func base91(_ chars: [Character]) -> Int? {
+        var value = 0
+        for char in chars {
+            guard let digit = base91(char) else { return nil }
+            value = value * 91 + digit
+        }
+        return value
+    }
+
+    private func base91(_ char: Character) -> Int? {
+        guard let value = ascii(char),
+              (33...123).contains(value) else { return nil }
+        return Int(value - 33)
+    }
+
+    private func letterIndex(_ char: Character, in alphabet: String) -> Int? {
+        Array(alphabet).firstIndex(of: char)
+    }
+
+    private func hundredths(_ value: String) -> String {
+        guard let integer = Int(value) else { return value }
+        return String(format: "%.2f", Double(integer) / 100.0)
+    }
+
+    private func joinDetails(_ details: [String], with comment: String) -> String {
+        let cleanComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDetails = details.filter { !$0.isEmpty }
+        if cleanDetails.isEmpty { return cleanComment }
+        if cleanComment.isEmpty { return cleanDetails.joined(separator: ", ") }
+        return "\(cleanDetails.joined(separator: ", ")) - \(cleanComment)"
+    }
+
+    private func ascii(_ char: Character) -> UInt8? {
+        guard char.unicodeScalars.count == 1,
+              let value = char.unicodeScalars.first?.value,
+              value <= UInt8.max else { return nil }
+        return UInt8(value)
+    }
+}
+
+private struct ParsedPosition {
+    var latitude: Double?
+    var longitude: Double?
+    var comment: String
+    var symbol: APRSSymbol?
+
+    var body: String {
+        comment
     }
 }
 

@@ -93,7 +93,7 @@ struct APRSChatView: View {
 
     private var beaconList: some View {
         packetRows(
-            app.messages.filter { $0.type == .position || $0.type == .weather || $0.type == .object },
+            app.messages.filter(isBeaconPacket),
             emptyTitle: "No APRS beacons",
             emptySystemImage: "location",
             emptyDescription: "Position, weather, and object packets will appear here and on the map."
@@ -118,6 +118,16 @@ struct APRSChatView: View {
             ForEach(messages.reversed()) { item in
                 APRSMessageRow(message: item, localCallsign: app.settings.callsign)
             }
+        }
+    }
+
+    private func isBeaconPacket(_ message: APRSMessage) -> Bool {
+        if message.latitude != nil && message.longitude != nil { return true }
+        switch message.type {
+        case .position, .weather, .object, .item, .micE, .gps:
+            return true
+        default:
+            return false
         }
     }
 
@@ -287,6 +297,7 @@ struct APRSMessageRow: View {
         switch message.type {
         case .message: "message"
         case .position: "mappin.and.ellipse"
+        case .micE: "location.north.line"
         case .weather: "cloud.sun"
         case .object: "diamond"
         case .item: "smallcircle.filled.circle"
@@ -295,6 +306,10 @@ struct APRSMessageRow: View {
         case .query: "questionmark.circle"
         case .thirdParty: "arrow.triangle.branch"
         case .capability: "checklist"
+        case .userDefined: "curlybraces"
+        case .gps: "location.viewfinder"
+        case .directionFinding: "antenna.radiowaves.left.and.right"
+        case .invalid: "exclamationmark.triangle"
         case .raw: "doc.plaintext"
         }
     }
