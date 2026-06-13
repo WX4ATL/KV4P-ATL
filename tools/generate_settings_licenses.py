@@ -101,7 +101,7 @@ def main() -> None:
             spec_group("KV4P/ATL", "Settings and legal information for the KV4P/ATL radio app."),
             spec_child("Licenses, Credits & Attributions", "Legal_Index"),
             spec_value("App Name", "app_name", "KV4P/ATL"),
-            spec_value("Version", "version", "0.1.0"),
+            spec_value("Version", "version", "0.2.0"),
             spec_value("Project License", "project_license", "GPL-3.0-or-later"),
         ],
     )

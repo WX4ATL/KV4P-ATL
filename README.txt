@@ -1,13 +1,24 @@
 KV4P/ATL
 
-This workspace contains a native SwiftUI iPhone app scaffold for a KV4P/ATL rebuild using a BLE bridge transport. It also retains research sources in corpus/, firmware bridge code in firmware/ble_bridge/, and a Chromium-based web flasher in web-flasher/.
+KV4P/ATL is a native SwiftUI iPhone companion app, ESP32 BLE firmware overlay,
+APRS/KISS TNC implementation, and Chromium web flasher for KV4P HT ham radios.
+It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
+Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
+firmware status.
+
+Current shared development version: 0.2.0.
+
+This workspace contains the app source in kv4patl/, protocol tests in
+kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
+web flasher in web-flasher/. Local research/device logs are retained privately
+in corpus/ and are excluded from public source packages.
 
 License and public release:
 - This project is intended to be distributed under GPL-3.0-or-later. See LICENSE.txt and NOTICE.txt.
 - The KV4P/ATL app, BLE firmware overlay, web flasher glue, and icon adaptation are KV4P HT derivative work because they adapt KV4P firmware/app behavior, protocol behavior, and artwork.
 - Public App Store and firmware binary releases include complete corresponding source and follow APP_STORE_GPL_RELEASE_PLAN.txt.
 - Use CUSTOM_EULA_GPL.txt as the App Store End User License Agreement text so GPL rights are preserved.
-- Public source repository planned for release: https://github.com/WX4ATL/KV4P-ATL. Do not submit public app or firmware binaries until that repository is public and contains the complete corresponding source for the exact build.
+- Public source repository: https://github.com/WX4ATL/KV4P-ATL. Do not submit public app or firmware binaries unless that repository contains the complete corresponding source for the exact build.
 - Use GITHUB_RELEASE_GUIDE.txt for the step-by-step GitHub publishing flow.
 - Use PUBLIC_RELEASE_MANIFEST.txt and tools/make_public_release.sh to create the public source package. The package excludes local corpus logs, quarantined materials, downloaded research PDFs, signing files, and device logs.
 
@@ -54,5 +65,5 @@ Notes:
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories now imports RepeaterBook CSV exports instead of adding a fake sample repeater.
-- Current source-build status: generic iOS device build passed and BLE firmware esp32dev-release build passed on 2026-06-11 after the ADPCM redesign.
+- Current source-build status: generic iOS device build passed, simulator build/test passed, and BLE firmware esp32dev-release build passed on 2026-06-13 for shared version 0.2.0.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.

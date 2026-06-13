@@ -11,6 +11,7 @@ UPSTREAM_REPO="${PROJECT_ROOT}/corpus/sources/repos/VanceVagell-kv4p-ht"
 BUILD_ROOT="${PROJECT_ROOT}/build/kv4p-ble-firmware-src"
 WEB_FIRMWARE_DIR="${PROJECT_ROOT}/web-flasher/firmware"
 UPDATE_UPSTREAM=0
+PROJECT_VERSION="${KV4P_ATL_PROJECT_VERSION:-0.2.0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -62,7 +63,7 @@ if [[ "${UPDATE_UPSTREAM}" == "1" ]]; then
   git -C "${UPSTREAM_REPO}" pull --ff-only
 fi
 
-FIRMWARE_DIR="$("${SCRIPT_DIR}/apply_ble_overlay.sh" "${UPSTREAM_REPO}" "${BUILD_ROOT}")"
+FIRMWARE_DIR="$(bash "${SCRIPT_DIR}/apply_ble_overlay.sh" "${UPSTREAM_REPO}" "${BUILD_ROOT}")"
 SKETCH="${FIRMWARE_DIR}/kv4p_ht_esp32_wroom_32/kv4p_ht_esp32_wroom_32.ino"
 VERSION="$(sed -nE 's/^const uint16_t FIRMWARE_VER = ([0-9]+);/\1/p' "${SKETCH}" | head -n 1)"
 
@@ -93,8 +94,8 @@ OUT_BIN="${WEB_FIRMWARE_DIR}/kv4p-ht-firmware-ble-v${VERSION}.bin"
 
 cat > "${WEB_FIRMWARE_DIR}/manifest-ble-v${VERSION}.json" <<JSON
 {
-  "name": "KV4P HT BLE bridge firmware",
-  "version": "v${VERSION}-ble",
+  "name": "KV4P/ATL BLE bridge firmware",
+  "version": "${PROJECT_VERSION}-fw${VERSION}-ble",
   "new_install_prompt_erase": false,
   "builds": [
     {

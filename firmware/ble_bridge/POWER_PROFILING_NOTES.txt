@@ -1,0 +1,68 @@
+KV4P/ATL radio power and CPU profiling notes
+
+Version context
+These notes were started during the 0.2.0 development pass.
+
+Observed USB device
+The connected radio presents to macOS through a Silicon Labs CP2102 USB to UART
+Bridge Controller at /dev/cu.usbserial-0001. macOS exposes the bridge identity
+and USB controller current limits, but it does not expose live current draw for
+this device path. A real RX/TX power number therefore needs an inline USB-C
+power meter or board-level current instrumentation.
+
+Observed firmware behavior on 2026-06-13
+A passive, no-write serial tap captured a task watchdog reset:
+
+  E (20488) task_wdt: Task watchdog got triggered.
+  E (20488) task_wdt:  - loopTask (CPU 1)
+  E (20488) task_wdt: Tasks currently running:
+  E (20488) task_wdt: CPU 0: IDLE0
+  E (20488) task_wdt: CPU 1: loopTask
+
+That means the Arduino loop task spent too long without yielding or resetting
+the watchdog. It is evidence of CPU starvation in the firmware loop, not a
+host-side iPhone app crash.
+
+A follow-up passive capture after reboot collected 774,561 bytes in 25 seconds,
+about 30,982 bytes per second, with many KISS frame delimiters. In an idle or
+disconnected host state, that much continuous binary output strongly suggests
+that stale live-audio state can keep the ADC/I2S receive path, ADPCM encoder,
+and KISS output path active when no central app is actually consuming it.
+
+0.2.0 mitigation
+The BLE overlay now clears only transient host-owned state when the main BLE
+session stops being ready:
+
+  HOST_STATE_PTT_REQUESTED
+  HOST_STATE_RX_AUDIO_OPEN
+
+The overlay then requests a PTT-off recovery path, reconciles desired radio
+state, and marks device state dirty. Persistent radio configuration is left
+alone. The goal is to prevent an abandoned BLE session from keeping TX, RX
+audio capture, ADPCM encoding, and high-rate KISS audio output alive.
+
+Recommended next instrumentation
+The current public firmware protocol does not expose per-FreeRTOS-task CPU
+usage, so the Mac cannot reliably report which firmware routines consume the
+most CPU beyond watchdog task names. Add a future debug command or vendor frame
+that samples FreeRTOS runtime stats using vTaskGetRunTimeStats() over a fixed
+window, then reports task name, runtime counter, percentage, free stack, mode,
+audioOpen, BLE ready state, notification drops, and loop latency maxima.
+
+Power optimization candidates
+- Keep RX audio closed unless a connected central has requested it.
+- Do not mirror RX audio to USB when a BLE app is the active audio consumer.
+- Avoid fast SA818/RSSI polling while BLE audio is active.
+- Keep connection interval low enough for audio latency, but avoid needlessly
+  aggressive polling when idle.
+- Lower ESP32 BLE transmit power only after RF/BLE range testing confirms it
+  remains reliable near an iPhone.
+- Consider light sleep only for disconnected idle states; active BLE audio
+  streaming should prioritize deterministic notification timing.
+
+Reference documents reviewed
+- Espressif, "Sleep Modes," ESP-IDF Programming Guide.
+- Espressif, "Watchdogs," ESP-IDF Programming Guide.
+- Espressif, "BLE Connection," ESP-IDF Programming Guide.
+- Espressif, "FreeRTOS," ESP-IDF Programming Guide.
+- Espressif, "Bluetooth LE," ESP-FAQ.

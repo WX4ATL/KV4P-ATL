@@ -1,5 +1,7 @@
 KV4P/ATL BLE bridge integration notes
 
+Current shared development version: 0.2.0.
+
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
 part of a KV4P HT derivative firmware. Preserve upstream KV4P HT notices,
@@ -100,3 +102,8 @@ Build and flasher package
 4. Flash with the local web flasher:
    python3 -m http.server 8766 --directory web-flasher
    Open http://127.0.0.1:8766/kv4p-ble-flasher.html in Chromium.
+
+Power and CPU profiling
+See POWER_PROFILING_NOTES.txt for the 0.2.0 USB diagnostic findings, including
+the observed loopTask watchdog reset, idle binary output rate, macOS live-power
+measurement limitation, and recommended future FreeRTOS runtime-stat telemetry.
