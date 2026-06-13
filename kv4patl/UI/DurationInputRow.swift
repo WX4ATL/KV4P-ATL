@@ -45,33 +45,39 @@ struct DurationInputRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LabeledContent(title, value: formattedDuration(seconds))
-            HStack {
+            Text(title)
+            HStack(spacing: 10) {
                 TextField("Amount", text: $amountText)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 80)
                     .focused($amountFocused)
                     .onChange(of: amountText) { _, _ in
                         updateSecondsFromText(allowDefault: false)
                     }
 
-                Picker(selection: $unit) {
+                Menu {
                     ForEach(KV4PDurationUnit.allCases) { unit in
-                        Text(unit.rawValue).tag(unit)
+                        Button {
+                            selectUnit(unit)
+                        } label: {
+                            if self.unit == unit {
+                                Label(unit.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(unit.rawValue)
+                            }
+                        }
                     }
                 } label: {
-                    Text(unit.rawValue)
-                        .lineLimit(1)
-                        .frame(minWidth: 108, alignment: .leading)
-                }
-                .pickerStyle(.menu)
-                .onChange(of: unit) { _, _ in
-                    if amountFocused {
-                        updateSecondsFromText(allowDefault: false)
-                    } else {
-                        syncTextFromSeconds()
+                    HStack(spacing: 6) {
+                        Text(unit.rawValue)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.semibold))
                     }
+                    .frame(minWidth: 104)
                 }
+                .buttonStyle(.bordered)
             }
 
             if let footer {
@@ -94,6 +100,15 @@ struct DurationInputRow: View {
         }
         .onChange(of: seconds) { _, _ in
             guard !amountFocused else { return }
+            syncTextFromSeconds()
+        }
+    }
+
+    private func selectUnit(_ newUnit: KV4PDurationUnit) {
+        unit = newUnit
+        if amountFocused {
+            updateSecondsFromText(allowDefault: false)
+        } else {
             syncTextFromSeconds()
         }
     }
@@ -130,16 +145,4 @@ struct DurationInputRow: View {
         min(allowedRange.upperBound, max(allowedRange.lowerBound, value))
     }
 
-    private func formattedDuration(_ value: Double) -> String {
-        let clampedValue = clamped(value)
-        if clampedValue < 3_600 {
-            return "\(Int(clampedValue / 60)) min"
-        }
-        if clampedValue < 86_400 {
-            let hours = clampedValue / 3_600
-            return hours == floor(hours) ? "\(Int(hours)) hr" : String(format: "%.1f hr", hours)
-        }
-        let days = clampedValue / 86_400
-        return days == floor(days) ? "\(Int(days)) days" : String(format: "%.1f days", days)
-    }
 }

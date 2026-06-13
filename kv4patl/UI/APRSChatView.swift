@@ -119,23 +119,21 @@ struct APRSChatView: View {
                     .textInputAutocapitalization(.characters)
                     .textFieldStyle(.roundedBorder)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Location beacons")
-                        .font(.subheadline.weight(.semibold))
-                    Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
-                        .onChange(of: app.settings.beaconPosition) { _, enabled in
-                            app.saveSettings()
-                            if enabled { app.preparePositionBeaconing() }
-                        }
-                    Toggle("Automatic location beacons", isOn: $app.settings.autoBeaconEnabled)
-                    Text("Location accuracy")
-                        .font(.subheadline.weight(.semibold))
-                    Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
-                        Text("Exact").tag("Exact")
-                        Text("Approximate").tag("Approx")
+                Text("Location beacons")
+                    .font(.subheadline.weight(.semibold))
+                Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
+                    .onChange(of: app.settings.beaconPosition) { _, enabled in
+                        app.saveSettings()
+                        if enabled { app.preparePositionBeaconing() }
                     }
-                    .pickerStyle(.segmented)
+                Toggle("Automatic location beacons", isOn: $app.settings.autoBeaconEnabled)
+                Text("Location accuracy")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
+                    Text("Exact").tag("Exact")
+                    Text("Approximate").tag("Approx")
                 }
+                .pickerStyle(.segmented)
 
                 DurationInputRow(
                     title: "Beacon interval",
@@ -151,27 +149,19 @@ struct APRSChatView: View {
                         .textFieldStyle(.roundedBorder)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("APRS frequency")
-                        .font(.subheadline.weight(.semibold))
-                    Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
-                        Text("Current frequency").tag("Current")
-                        Text("144.3900").tag("144.3900")
-                        Text("144.5750").tag("144.5750")
-                        Text("144.8000").tag("144.8000")
-                        Text("145.8250").tag("145.8250")
-                    }
+                Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
+                    Text("Current frequency").tag("Current")
+                    Text("144.3900").tag("144.3900")
+                    Text("144.5750").tag("144.5750")
+                    Text("144.8000").tag("144.8000")
+                    Text("145.8250").tag("145.8250")
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("APRS icon")
-                        .font(.subheadline.weight(.semibold))
-                    Picker("APRS icon", selection: $app.settings.aprsIcon) {
-                        Text("Phone").tag("Phone")
-                        Text("Person").tag("Person")
-                        Text("House").tag("House")
-                        Text("Car").tag("Car")
-                    }
+                Picker("APRS icon", selection: $app.settings.aprsIcon) {
+                    Text("Phone").tag("Phone")
+                    Text("Person").tag("Person")
+                    Text("House").tag("House")
+                    Text("Car").tag("Car")
                 }
 
                 Toggle("Digipeat packets", isOn: $app.settings.digipeatPackets)
