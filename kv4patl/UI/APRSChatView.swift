@@ -119,13 +119,23 @@ struct APRSChatView: View {
                     .textInputAutocapitalization(.characters)
                     .textFieldStyle(.roundedBorder)
 
-                Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
-                    .onChange(of: app.settings.beaconPosition) { _, enabled in
-                        app.saveSettings()
-                        if enabled { app.preparePositionBeaconing() }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Location beacons")
+                        .font(.subheadline.weight(.semibold))
+                    Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
+                        .onChange(of: app.settings.beaconPosition) { _, enabled in
+                            app.saveSettings()
+                            if enabled { app.preparePositionBeaconing() }
+                        }
+                    Toggle("Automatic location beacons", isOn: $app.settings.autoBeaconEnabled)
+                    Text("Location accuracy")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
+                        Text("Exact").tag("Exact")
+                        Text("Approximate").tag("Approx")
                     }
-
-                Toggle("Automatic location beacons", isOn: $app.settings.autoBeaconEnabled)
+                    .pickerStyle(.segmented)
+                }
 
                 DurationInputRow(
                     title: "Beacon interval",
@@ -134,28 +144,34 @@ struct APRSChatView: View {
                     defaultUnit: .minutes
                 )
 
-                TextField("Beacon status comment", text: $app.settings.aprsStatusComment)
-                    .textFieldStyle(.roundedBorder)
-
-                Picker("Beacon frequency", selection: $app.settings.beaconFrequency) {
-                    Text("Current frequency").tag("Current")
-                    Text("144.3900").tag("144.3900")
-                    Text("144.5750").tag("144.5750")
-                    Text("144.8000").tag("144.8000")
-                    Text("145.8250").tag("145.8250")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Beacon status comment")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("Type your own status", text: $app.settings.aprsStatusComment)
+                        .textFieldStyle(.roundedBorder)
                 }
 
-                Picker("Position accuracy", selection: $app.settings.aprsAccuracy) {
-                    Text("Exact").tag("Exact")
-                    Text("Approx").tag("Approx")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("APRS frequency")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
+                        Text("Current frequency").tag("Current")
+                        Text("144.3900").tag("144.3900")
+                        Text("144.5750").tag("144.5750")
+                        Text("144.8000").tag("144.8000")
+                        Text("145.8250").tag("145.8250")
+                    }
                 }
-                .pickerStyle(.segmented)
 
-                Picker("Map icon", selection: $app.settings.aprsIcon) {
-                    Text("Phone").tag("Phone")
-                    Text("Person").tag("Person")
-                    Text("House").tag("House")
-                    Text("Car").tag("Car")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("APRS icon")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("APRS icon", selection: $app.settings.aprsIcon) {
+                        Text("Phone").tag("Phone")
+                        Text("Person").tag("Person")
+                        Text("House").tag("House")
+                        Text("Car").tag("Car")
+                    }
                 }
 
                 Toggle("Digipeat packets", isOn: $app.settings.digipeatPackets)

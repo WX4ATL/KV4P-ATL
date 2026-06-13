@@ -507,16 +507,16 @@ final class AppState: ObservableObject {
     }
 
     func importRepeaterSample() {
-        let sample = ChannelMemory(name: "RepeaterBook Sample", group: "Nearby", frequency: 146.9400, offset: .down, offsetKHz: 600, txTone: "100.0", rxTone: "None", skipDuringScan: false)
+        let sample = ChannelMemory(name: "Repeater Sample", group: "Nearby", frequency: 146.9400, offset: .down, offsetKHz: 600, txTone: "100.0", rxTone: "None", skipDuringScan: false)
         addMemory(sample)
-        statusLine = "Sample repeater imported. RepeaterBook login/download wiring is ready for native implementation."
+        statusLine = "Sample repeater imported."
     }
 
     func importRepeaters(_ repeaters: [RepeaterInfo], group: String) {
-        let imported = repeaters.map { RepeaterBookCSVParser.memory(from: $0, group: group) }
+        let imported = repeaters.map { RepeaterCSVParser.memory(from: $0, group: group) }
         memories.append(contentsOf: imported)
         store.saveMemories(memories)
-        statusLine = "Imported \(imported.count) RepeaterBook memories."
+        statusLine = "Imported \(imported.count) repeater memories."
     }
 
     private func handle(_ event: KV4PTransportEvent) {

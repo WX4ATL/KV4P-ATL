@@ -20,7 +20,7 @@ struct MemoriesView: View {
 
             Section {
                 if filteredMemories.isEmpty {
-                    ContentUnavailableView("No memories", systemImage: "list.bullet.rectangle", description: Text("Add a channel or import a RepeaterBook CSV."))
+                    ContentUnavailableView("No memories", systemImage: "list.bullet.rectangle", description: Text("Add a channel or import a repeater CSV."))
                 } else {
                     ForEach(filteredMemories) { memory in
                         Button {
@@ -71,7 +71,7 @@ struct MemoriesView: View {
                 Button {
                     showingRepeaterImport = true
                 } label: {
-                    Label("Find nearby repeaters", systemImage: "arrow.down.doc")
+                    Label("Import repeaters", systemImage: "arrow.down.doc")
                 }
                 Button {
                     showingEditor = true
@@ -230,19 +230,22 @@ struct RepeaterImportView: View {
     @State private var group = "Nearby"
     @State private var repeaters: [RepeaterInfo] = []
     @State private var showingImporter = false
+    @State private var showingImportHelp = false
     @State private var status = "No CSV selected."
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Source") {
-                    Link(destination: URL(string: "https://www.repeaterbook.com/repeaters/prox.php")!) {
-                        Label("RepeaterBook search", systemImage: "safari")
-                    }
+                Section("CSV file") {
                     Button {
                         showingImporter = true
                     } label: {
                         Label("Import CSV", systemImage: "doc.badge.plus")
+                    }
+                    Button {
+                        showingImportHelp = true
+                    } label: {
+                        Label("Import help", systemImage: "questionmark.circle")
                     }
                     Text(status)
                         .font(.caption)
@@ -288,8 +291,14 @@ struct RepeaterImportView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.commaSeparatedText, .plainText]) { result in
+            .fileImporter(
+                isPresented: $showingImporter,
+                allowedContentTypes: [.commaSeparatedText, .delimitedText, .text, .plainText, .data, .item]
+            ) { result in
                 importCSV(result)
+            }
+            .sheet(isPresented: $showingImportHelp) {
+                RepeaterImportHelpView()
             }
         }
     }
@@ -297,25 +306,73 @@ struct RepeaterImportView: View {
     private func importCSV(_ result: Result<URL, Error>) {
         do {
             let url = try result.get()
+            guard isSupportedCSVURL(url) else {
+                status = "Choose a .csv or text export file."
+                return
+            }
             let allowed = url.startAccessingSecurityScopedResource()
             defer {
                 if allowed {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
-            let csv = try String(contentsOf: url, encoding: .utf8)
+            let csv = try loadCSVText(from: url)
             let minFrequency = app.firmwareVersion?.minFrequency ?? 0
             let maxFrequency = app.firmwareVersion?.maxFrequency ?? 1_000
-            repeaters = RepeaterBookCSVParser.parse(csv, minFrequency: minFrequency, maxFrequency: maxFrequency)
+            repeaters = RepeaterCSVParser.parse(csv, minFrequency: minFrequency, maxFrequency: maxFrequency)
             status = repeaters.isEmpty ? "No supported repeater rows found in that CSV." : "Loaded \(repeaters.count) repeaters."
         } catch {
             status = error.localizedDescription
         }
     }
 
+    private func isSupportedCSVURL(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return ["csv", "txt", "tsv"].contains(ext)
+    }
+
+    private func loadCSVText(from url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        let encodings: [String.Encoding] = [.utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .isoLatin1, .ascii]
+        for encoding in encodings {
+            if let text = String(data: data, encoding: encoding) {
+                return text
+            }
+        }
+        throw CocoaError(.fileReadInapplicableStringEncoding)
+    }
+
     private func offsetLabel(_ offset: Float) -> String {
         if offset == 0 { return "simplex" }
         return String(format: "%+.3f MHz", offset)
+    }
+}
+
+private struct RepeaterImportHelpView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("How to import") {
+                    Label("Use a repeater directory or radio-planning site in your browser.", systemImage: "safari")
+                    Label("Search your area and band, then export or download a CSV channel list.", systemImage: "magnifyingglass")
+                    Label("Save the CSV to Files, iCloud Drive, or Downloads.", systemImage: "folder")
+                    Label("Return here, tap Import CSV, select that file, preview the rows, then save them.", systemImage: "square.and.arrow.down")
+                }
+                Section("Coordinates") {
+                    Text("Most channel CSV exports contain frequencies, offsets, tones, names, and locations as text, but not latitude and longitude. KV4P/ATL imports those rows as radio memories. Map-distance sorting would need a separate coordinate-capable export in a future importer.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Import Help")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 
@@ -330,6 +387,7 @@ struct MemoryEditorView: View {
     @State private var offsetKHz = 600
     @State private var txTone = "None"
     @State private var rxTone = "None"
+    @State private var activeToneSelector: MemoryToneSelector?
 
     init(memory: ChannelMemory? = nil) {
         editingMemory = memory
@@ -359,15 +417,11 @@ struct MemoryEditorView: View {
                         Text("Up").tag(ChannelMemory.Offset.up)
                     }
                     Stepper("Offset \(offsetKHz) kHz", value: $offsetKHz, in: 0...5_000, step: 5)
-                    Picker("TX tone", selection: $txTone) {
-                        ForEach(RadioToneHelper.validToneStrings, id: \.self) { tone in
-                            Text(tone).tag(tone)
-                        }
+                    RadioTonePickerRow(title: "TX", selection: $txTone) {
+                        activeToneSelector = .tx
                     }
-                    Picker("RX tone", selection: $rxTone) {
-                        ForEach(RadioToneHelper.validToneStrings, id: \.self) { tone in
-                            Text(tone).tag(tone)
-                        }
+                    RadioTonePickerRow(title: "RX", selection: $rxTone) {
+                        activeToneSelector = .rx
                     }
                 }
             }
@@ -399,6 +453,19 @@ struct MemoryEditorView: View {
                     }
                 }
             }
+            .sheet(item: $activeToneSelector) { selector in
+                ToneSelectionView(
+                    title: selector == .tx ? "TX Tone" : "RX Tone",
+                    selection: selector == .tx ? $txTone : $rxTone
+                )
+            }
         }
+    }
+
+    private enum MemoryToneSelector: String, Identifiable {
+        case tx
+        case rx
+
+        var id: String { rawValue }
     }
 }

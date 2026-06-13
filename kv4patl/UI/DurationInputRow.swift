@@ -47,7 +47,7 @@ struct DurationInputRow: View {
         VStack(alignment: .leading, spacing: 8) {
             LabeledContent(title, value: formattedDuration(seconds))
             HStack {
-                TextField("Time", text: $amountText)
+                TextField("Amount", text: $amountText)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .focused($amountFocused)
@@ -55,10 +55,14 @@ struct DurationInputRow: View {
                         updateSecondsFromText(allowDefault: false)
                     }
 
-                Picker("Unit", selection: $unit) {
+                Picker(selection: $unit) {
                     ForEach(KV4PDurationUnit.allCases) { unit in
                         Text(unit.rawValue).tag(unit)
                     }
+                } label: {
+                    Text(unit.rawValue)
+                        .lineLimit(1)
+                        .frame(minWidth: 108, alignment: .leading)
                 }
                 .pickerStyle(.menu)
                 .onChange(of: unit) { _, _ in

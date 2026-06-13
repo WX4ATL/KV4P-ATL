@@ -65,7 +65,6 @@ struct AboutView: View {
         "Espressif Systems. \"Basic Commands.\" Esptool Documentation, 2026, https://docs.espressif.com/projects/esptool/en/latest/esp32/esptool/basic-commands.html.",
         "ESPHome. \"ESP Web Tools.\" ESP Web Tools, 2026, https://esphome.github.io/esp-web-tools/.",
         "NiceRF Wireless Technology Co., Ltd. SA818 Walkie Talkie Module Programming Manual. NiceRF, 2015.",
-        "RepeaterBook. \"API.\" RepeaterBook Wiki, 2026, https://www.repeaterbook.com/wiki/doku.php?id=api.",
         "Interactive Multimedia Association. Recommended Practices for Enhancing Digital Audio Compatibility in Multimedia Systems. IMA, 21 Oct. 1992, https://www.cs.columbia.edu/~hgs/audio/dvi/IMA_ADPCM.pdf.",
         "MultimediaWiki Contributors. \"IMA ADPCM.\" MultimediaWiki, 2026, https://wiki.multimedia.cx/index.php/IMA_ADPCM.",
         "Tucson Amateur Packet Radio Corporation. AX.25 Link Access Protocol for Amateur Packet Radio. Version 2.2, 1997.",

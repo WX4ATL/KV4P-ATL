@@ -52,39 +52,58 @@ struct SettingsView: View {
             Section("APRS") {
                 TextField("Your callsign", text: $app.settings.callsign)
                     .textInputAutocapitalization(.characters)
-                Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
-                    .onChange(of: app.settings.beaconPosition) { _, enabled in
-                        app.saveSettings()
-                        if enabled {
-                            app.preparePositionBeaconing()
-                        }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Location beacons")
+                        .font(.subheadline.weight(.semibold))
+                    Toggle("Beacon my position", isOn: $app.settings.beaconPosition)
+                        .onChange(of: app.settings.beaconPosition) { _, enabled in
+                            app.saveSettings()
+                            if enabled {
+                                app.preparePositionBeaconing()
+                            }
                     }
-                Toggle("Automatic beacons", isOn: $app.settings.autoBeaconEnabled)
+                    Toggle("Automatic beacons", isOn: $app.settings.autoBeaconEnabled)
+                    Text("Location accuracy")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("Location accuracy", selection: $app.settings.aprsAccuracy) {
+                        Text("Exact").tag("Exact")
+                        Text("Approximate").tag("Approx")
+                    }
+                    .pickerStyle(.segmented)
+                }
                 DurationInputRow(
                     title: "Beacon interval",
                     seconds: $app.settings.beaconIntervalSeconds,
                     allowedRange: 60...86_400,
                     defaultUnit: .minutes
                 )
-                TextField("Custom beacon status comment", text: $app.settings.aprsStatusComment)
-                    .textInputAutocapitalization(.sentences)
-                Picker("Beacon to frequency", selection: $app.settings.beaconFrequency) {
-                    Text("Current").tag("Current")
-                    Text("144.3900").tag("144.3900")
-                    Text("144.5750").tag("144.5750")
-                    Text("144.8000").tag("144.8000")
-                    Text("145.8250").tag("145.8250")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Beacon status comment")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("Type your own status", text: $app.settings.aprsStatusComment)
+                        .textInputAutocapitalization(.sentences)
                 }
-                .onChange(of: app.settings.beaconFrequency) { _, _ in app.saveSettings() }
-                Picker("My position accuracy", selection: $app.settings.aprsAccuracy) {
-                    Text("Exact").tag("Exact")
-                    Text("Approx").tag("Approx")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("APRS frequency")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("APRS frequency", selection: $app.settings.beaconFrequency) {
+                        Text("Current").tag("Current")
+                        Text("144.3900").tag("144.3900")
+                        Text("144.5750").tag("144.5750")
+                        Text("144.8000").tag("144.8000")
+                        Text("145.8250").tag("145.8250")
+                    }
+                    .onChange(of: app.settings.beaconFrequency) { _, _ in app.saveSettings() }
                 }
-                Picker("My position icon", selection: $app.settings.aprsIcon) {
-                    Text("Phone").tag("Phone")
-                    Text("Person").tag("Person")
-                    Text("House").tag("House")
-                    Text("Car").tag("Car")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("APRS icon")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("APRS icon", selection: $app.settings.aprsIcon) {
+                        Text("Phone").tag("Phone")
+                        Text("Person").tag("Person")
+                        Text("House").tag("House")
+                        Text("Car").tag("Car")
+                    }
                 }
                 Toggle("Digipeat (mesh)", isOn: $app.settings.digipeatPackets)
                 Toggle("Expose standard BLE KISS TNC", isOn: $app.settings.exposeKISSTNC)

@@ -201,17 +201,17 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNoThrow(try codec.resetDecoder())
     }
 
-    func testRepeaterBookUSCSVParsesOffsetAndToneMemory() {
+    func testRepeaterCSVParsesOffsetAndToneMemory() {
         let csv = """
         Freq,Input,Offset,Tone,Location,State,County,Call,Use,Miles,Bearing,Mode
         146.940,146.340,-0.600,100.0,"Stone Mountain, GA",GA,DeKalb,W4XYZ,OPEN,12.3,NE,FM
         """
 
-        let repeaters = RepeaterBookCSVParser.parse(csv, minFrequency: 144, maxFrequency: 148)
+        let repeaters = RepeaterCSVParser.parse(csv, minFrequency: 144, maxFrequency: 148)
         XCTAssertEqual(repeaters.count, 1)
         XCTAssertEqual(repeaters[0].tone, "100")
 
-        let memory = RepeaterBookCSVParser.memory(from: repeaters[0], group: "Nearby")
+        let memory = RepeaterCSVParser.memory(from: repeaters[0], group: "Nearby")
         XCTAssertEqual(memory.offset, .down)
         XCTAssertEqual(memory.offsetKHz, 600)
         XCTAssertEqual(memory.frequency, 146.940, accuracy: 0.0001)

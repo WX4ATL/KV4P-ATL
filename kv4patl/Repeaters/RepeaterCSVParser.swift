@@ -16,7 +16,7 @@ struct RepeaterInfo: Identifiable, Equatable {
     var bearing: String
 }
 
-enum RepeaterBookCSVParser {
+enum RepeaterCSVParser {
     static func parse(_ csv: String, minFrequency: Float = 0, maxFrequency: Float = 1_000) -> [RepeaterInfo] {
         let records = splitRecords(csv)
         guard let header = records.first else { return [] }

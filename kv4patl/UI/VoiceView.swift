@@ -203,38 +203,9 @@ struct VoiceView: View {
     }
 
     private func tonePicker(_ title: String, selector: ToneSelector, selection: Binding<String>) -> some View {
-        HStack(spacing: 10) {
-            Text(title)
-                .font(.body.weight(.medium))
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            Button {
-                activeToneSelector = selector
-            } label: {
-                HStack(spacing: 6) {
-                    Text(toneDisplay(selection.wrappedValue))
-                        .font(.body.monospacedDigit())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .allowsTightening(true)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(.blue)
-                .frame(minWidth: 96, alignment: .trailing)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(title) tone")
-            .accessibilityValue(toneDisplay(selection.wrappedValue))
+        RadioTonePickerRow(title: title, selection: selection) {
+            activeToneSelector = selector
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func toneDisplay(_ tone: String) -> String {
-        RadioToneHelper.normalize(tone) == "None" ? "NONE" : tone
     }
 
     private func commitFrequency() {
@@ -284,7 +255,46 @@ struct VoiceView: View {
     }
 }
 
-private struct ToneSelectionView: View {
+struct RadioTonePickerRow: View {
+    let title: String
+    @Binding var selection: String
+    var action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .lineLimit(1)
+
+            Button(action: action) {
+                HStack(spacing: 6) {
+                    Text(toneDisplay(selection))
+                        .font(.body.monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .allowsTightening(true)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.blue)
+                .frame(minWidth: 96, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(title) tone")
+            .accessibilityValue(toneDisplay(selection))
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func toneDisplay(_ tone: String) -> String {
+        RadioToneHelper.normalize(tone) == "None" ? "NONE" : tone
+    }
+}
+
+struct ToneSelectionView: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     @Binding var selection: String
