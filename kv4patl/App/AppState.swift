@@ -97,6 +97,9 @@ final class AppState: ObservableObject {
         memories = store.loadMemories()
         let retentionCutoff = Date().addingTimeInterval(-max(60, loadedSettings.packetRetentionSeconds))
         messages = store.loadMessages().filter { $0.timestamp >= retentionCutoff }
+        if ProcessInfo.processInfo.arguments.contains("--qa-aprs-sample-packets") {
+            messages = Self.makeQASampleAPRSMessages()
+        }
         activeFrequency = memories.first?.frequency ?? 146.5200
         activeMemoryName = memories.first?.name ?? "Welcome to"
         activeRxFrequency = activeFrequency
@@ -1226,6 +1229,43 @@ final class AppState: ObservableObject {
 
     private static func elapsedMS(since date: Date) -> Int {
         max(0, Int(Date().timeIntervalSince(date) * 1_000))
+    }
+
+    private static func makeQASampleAPRSMessages() -> [APRSMessage] {
+        let now = Date()
+        return [
+            APRSMessage(
+                type: .position,
+                from: "WX4ATL-7",
+                to: "APAT81",
+                body: "Main HT | Messaging Capable | www.arid.club",
+                timestamp: now,
+                latitude: 33.8012,
+                longitude: -84.5028,
+                symbolTable: "/",
+                symbolCode: ">",
+                dataPoints: [
+                    APRSDataPoint(label: "Course", value: "175°", systemImage: "location.north.line", tint: "blue"),
+                    APRSDataPoint(label: "Speed", value: "0 mph", systemImage: "speedometer", tint: "green"),
+                    APRSDataPoint(label: "Altitude", value: "728 ft", systemImage: "mountain.2", tint: "orange")
+                ]
+            ),
+            APRSMessage(
+                type: .weather,
+                from: "WX4ATL-13",
+                to: "APRS",
+                body: "Weather report",
+                timestamp: now.addingTimeInterval(-60),
+                dataPoints: [
+                    APRSDataPoint(label: "Wind dir", value: "220°", systemImage: "safari", tint: "blue"),
+                    APRSDataPoint(label: "Wind", value: "5 mph", systemImage: "wind", tint: "blue"),
+                    APRSDataPoint(label: "Gust", value: "12 mph", systemImage: "wind.snow", tint: "blue"),
+                    APRSDataPoint(label: "Temp", value: "77°F", systemImage: "thermometer.medium", tint: "orange"),
+                    APRSDataPoint(label: "Humidity", value: "50%", systemImage: "humidity", tint: "cyan"),
+                    APRSDataPoint(label: "Pressure", value: "1013.2 mb", systemImage: "barometer", tint: "purple")
+                ]
+            )
+        ]
     }
 
     private static let minimumRekeyRecoverySeconds: TimeInterval = 0.2

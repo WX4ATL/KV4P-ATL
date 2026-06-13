@@ -171,10 +171,10 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(parsed.type, .position)
         XCTAssertEqual(parsed.latitude ?? 0, 33.8012, accuracy: 0.0001)
         XCTAssertEqual(parsed.longitude ?? 0, -84.5028, accuracy: 0.0001)
-        XCTAssertTrue(parsed.body.contains("course 175 deg"))
-        XCTAssertTrue(parsed.body.contains("speed 0 kt"))
-        XCTAssertTrue(parsed.body.contains("altitude 728 ft"))
-        XCTAssertTrue(parsed.body.contains("Main HT"))
+        XCTAssertEqual(parsed.dataPoint("Course"), "175°")
+        XCTAssertEqual(parsed.dataPoint("Speed"), "0 mph")
+        XCTAssertEqual(parsed.dataPoint("Altitude"), "728 ft")
+        XCTAssertEqual(parsed.body, "Main HT | Messaging Capable | www.arid.club")
         XCTAssertFalse(parsed.body.contains("175/000/A="))
     }
 
@@ -216,19 +216,21 @@ final class ProtocolTests: XCTestCase {
         let thirdParty = service.parse(packet: try makeAPRSPacket(info: "}WX4ATL-7>APAT81:!3348.07N/08430.17W>175/000/A=000728Main HT"))
 
         XCTAssertEqual(weather.type, .weather)
-        XCTAssertTrue(weather.body.contains("wind 220 deg"))
-        XCTAssertTrue(weather.body.contains("temp 77 F"))
-        XCTAssertTrue(weather.body.contains("pressure 1013.2 mb"))
+        XCTAssertEqual(weather.body, "Weather report")
+        XCTAssertEqual(weather.dataPoint("Wind dir"), "220°")
+        XCTAssertEqual(weather.dataPoint("Temp"), "77°F")
+        XCTAssertEqual(weather.dataPoint("Pressure"), "1013.2 mb")
         XCTAssertEqual(telemetry.type, .telemetry)
-        XCTAssertTrue(telemetry.body.contains("seq 123"))
-        XCTAssertTrue(telemetry.body.contains("channels 111/222/333/444/555"))
+        XCTAssertEqual(telemetry.dataPoint("Sequence"), "123")
+        XCTAssertEqual(telemetry.dataPoint("Channels"), "111/222/333/444/555")
         XCTAssertEqual(gps.type, .gps)
         XCTAssertEqual(gps.latitude ?? 0, 33.8012, accuracy: 0.0001)
         XCTAssertTrue(gps.body.contains("GPS fix"))
+        XCTAssertEqual(gps.dataPoint("Altitude"), "728.0 m")
         XCTAssertEqual(thirdParty.type, .thirdParty)
         XCTAssertEqual(thirdParty.latitude ?? 0, 33.8012, accuracy: 0.0001)
         XCTAssertTrue(thirdParty.body.contains("WX4ATL-7>APAT81"))
-        XCTAssertTrue(thirdParty.body.contains("altitude 728 ft"))
+        XCTAssertEqual(thirdParty.dataPoint("Altitude"), "728 ft")
     }
 
     func testAPRSUserDefinedInvalidMaidenheadAndMicEDecode() throws {
@@ -247,7 +249,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(micE.type, .micE)
         XCTAssertEqual(micE.latitude ?? 0, 33.8012, accuracy: 0.0001)
         XCTAssertEqual(micE.longitude ?? 0, -84.5028, accuracy: 0.0001)
-        XCTAssertTrue(micE.body.contains("Mic-E"))
+        XCTAssertEqual(micE.dataPoint("Format"), "Mic-E")
     }
 
     func testDigipeatDeduperSuppressesRepeatsInsideWindow() throws {
@@ -458,6 +460,12 @@ final class ProtocolTests: XCTestCase {
             value /= 91
         }
         return String(decoding: bytes, as: UTF8.self)
+    }
+}
+
+private extension APRSMessage {
+    func dataPoint(_ label: String) -> String? {
+        dataPoints.first { $0.label == label }?.value
     }
 }
 

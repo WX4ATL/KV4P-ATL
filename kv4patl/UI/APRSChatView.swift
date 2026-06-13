@@ -270,8 +270,18 @@ struct APRSMessageRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text(message.body)
-                .font(.body)
+            if !message.body.isEmpty {
+                Text(message.body)
+                    .font(.body)
+            }
+            if !message.dataPoints.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6, alignment: .leading)], alignment: .leading, spacing: 6) {
+                    ForEach(Array(message.dataPoints.enumerated()), id: \.offset) { _, point in
+                        APRSDataPointChip(point: point)
+                    }
+                }
+                .padding(.top, 2)
+            }
             HStack {
                 Text("to \(message.to)")
                 if let relay = message.relay {
@@ -311,6 +321,53 @@ struct APRSMessageRow: View {
         case .directionFinding: "antenna.radiowaves.left.and.right"
         case .invalid: "exclamationmark.triangle"
         case .raw: "doc.plaintext"
+        }
+    }
+}
+
+struct APRSDataPointChip: View {
+    var point: APRSDataPoint
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: point.systemImage)
+                .font(.caption.weight(.semibold))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(point.label)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(point.value)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(tintColor)
+        .background(tintColor.opacity(0.14), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(tintColor.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(point.label): \(point.value)")
+    }
+
+    private var tintColor: Color {
+        switch point.tint {
+        case "green": .green
+        case "orange": .orange
+        case "purple": .purple
+        case "teal": .teal
+        case "cyan": .cyan
+        case "yellow": .yellow
+        case "red": .red
+        default: .blue
         }
     }
 }

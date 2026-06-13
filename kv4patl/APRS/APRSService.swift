@@ -21,6 +21,13 @@ enum APRSMessageType: String, Codable {
     case raw
 }
 
+struct APRSDataPoint: Codable, Equatable {
+    var label: String
+    var value: String
+    var systemImage: String
+    var tint: String
+}
+
 struct APRSMessage: Identifiable, Codable, Equatable {
     var id = UUID()
     var type: APRSMessageType
@@ -34,10 +41,74 @@ struct APRSMessage: Identifiable, Codable, Equatable {
     var symbolTable: String?
     var symbolCode: String?
     var acknowledged = false
+    var dataPoints: [APRSDataPoint] = []
 
     var symbol: APRSSymbol? {
         guard let table = symbolTable?.first, let code = symbolCode?.first else { return nil }
         return APRSSymbol(table: table, code: code)
+    }
+
+    init(
+        id: UUID = UUID(),
+        type: APRSMessageType,
+        from: String,
+        to: String,
+        body: String,
+        timestamp: Date,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        relay: String? = nil,
+        symbolTable: String? = nil,
+        symbolCode: String? = nil,
+        acknowledged: Bool = false,
+        dataPoints: [APRSDataPoint] = []
+    ) {
+        self.id = id
+        self.type = type
+        self.from = from
+        self.to = to
+        self.body = body
+        self.timestamp = timestamp
+        self.latitude = latitude
+        self.longitude = longitude
+        self.relay = relay
+        self.symbolTable = symbolTable
+        self.symbolCode = symbolCode
+        self.acknowledged = acknowledged
+        self.dataPoints = dataPoints
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case from
+        case to
+        case body
+        case timestamp
+        case latitude
+        case longitude
+        case relay
+        case symbolTable
+        case symbolCode
+        case acknowledged
+        case dataPoints
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        type = try container.decode(APRSMessageType.self, forKey: .type)
+        from = try container.decode(String.self, forKey: .from)
+        to = try container.decode(String.self, forKey: .to)
+        body = try container.decode(String.self, forKey: .body)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        latitude = try container.decodeIfPresent(Double.self, forKey: .latitude)
+        longitude = try container.decodeIfPresent(Double.self, forKey: .longitude)
+        relay = try container.decodeIfPresent(String.self, forKey: .relay)
+        symbolTable = try container.decodeIfPresent(String.self, forKey: .symbolTable)
+        symbolCode = try container.decodeIfPresent(String.self, forKey: .symbolCode)
+        acknowledged = try container.decodeIfPresent(Bool.self, forKey: .acknowledged) ?? false
+        dataPoints = try container.decodeIfPresent([APRSDataPoint].self, forKey: .dataPoints) ?? []
     }
 }
 
@@ -133,17 +204,17 @@ struct APRSService {
         if dataType == "!" || dataType == "=" || dataType == "/" || dataType == "@" {
             let parsed = parsePositionInfo(body)
             let type: APRSMessageType = parsed.symbol?.code == "_" ? .weather : .position
-            return APRSMessage(type: type, from: source, to: destination, body: parsed.comment, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: type, from: source, to: destination, body: parsed.comment, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString, dataPoints: parsed.dataPoints)
         }
 
         if dataType == ";" {
             let parsed = parseObjectInfo(body)
-            return APRSMessage(type: .object, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .object, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString, dataPoints: parsed.dataPoints)
         }
 
         if dataType == ")" {
             let parsed = parseItemInfo(body)
-            return APRSMessage(type: .item, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .item, from: source, to: destination, body: parsed.text, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString, dataPoints: parsed.dataPoints)
         }
 
         if dataType == ">" {
@@ -151,7 +222,8 @@ struct APRSService {
         }
 
         if dataType == "_" {
-            return APRSMessage(type: .weather, from: source, to: destination, body: parseWeatherReport(String(body.dropFirst())), timestamp: timestamp, relay: relay)
+            let parsed = parseWeatherReport(String(body.dropFirst()))
+            return APRSMessage(type: .weather, from: source, to: destination, body: parsed.body, timestamp: timestamp, relay: relay, dataPoints: parsed.dataPoints)
         }
 
         if dataType == "#" || dataType == "*" {
@@ -159,7 +231,8 @@ struct APRSService {
         }
 
         if dataType == "T" && body.hasPrefix("T#") {
-            return APRSMessage(type: .telemetry, from: source, to: destination, body: parseTelemetryInfo(body), timestamp: timestamp, relay: relay)
+            let parsed = parseTelemetryInfo(body)
+            return APRSMessage(type: .telemetry, from: source, to: destination, body: parsed.body, timestamp: timestamp, relay: relay, dataPoints: parsed.dataPoints)
         }
 
         if dataType == "?" {
@@ -168,7 +241,7 @@ struct APRSService {
 
         if dataType == "}" {
             let parsed = parseThirdPartyInfo(body, relay: relay, timestamp: timestamp, depth: depth)
-            return APRSMessage(type: .thirdParty, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .thirdParty, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString, dataPoints: parsed.dataPoints)
         }
 
         if dataType == "<" {
@@ -181,7 +254,7 @@ struct APRSService {
 
         if dataType == "$" {
             let parsed = parseNMEAInfo(body)
-            return APRSMessage(type: .gps, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay)
+            return APRSMessage(type: .gps, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, dataPoints: parsed.dataPoints)
         }
 
         if dataType == "%" {
@@ -199,7 +272,7 @@ struct APRSService {
 
         if isMicEDataType(dataType), let destinationAddress {
             let parsed = parseMicEInfo(body, destination: destinationAddress)
-            return APRSMessage(type: .micE, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString)
+            return APRSMessage(type: .micE, from: source, to: destination, body: parsed.body, timestamp: timestamp, latitude: parsed.latitude, longitude: parsed.longitude, relay: relay, symbolTable: parsed.symbol?.tableString, symbolCode: parsed.symbol?.codeString, dataPoints: parsed.dataPoints)
         }
 
         return APRSMessage(type: .raw, from: source, to: destination, body: body, timestamp: timestamp, relay: relay)
@@ -252,32 +325,34 @@ struct APRSService {
         return parsePositionBody(body, start: offset, fallback: body)
     }
 
-    private func parseObjectInfo(_ body: String) -> (latitude: Double?, longitude: Double?, text: String, symbol: APRSSymbol?) {
+    private func parseObjectInfo(_ body: String) -> (latitude: Double?, longitude: Double?, text: String, symbol: APRSSymbol?, dataPoints: [APRSDataPoint]) {
         let chars = Array(body)
-        guard chars.count >= 11 else { return (nil, nil, body, nil) }
+        guard chars.count >= 11 else { return (nil, nil, body, nil, []) }
         let name = String(chars[1..<min(10, chars.count)]).trimmingCharacters(in: .whitespaces)
         let state = chars.count > 10 && chars[10] == "_" ? "deleted" : "live"
         let hasTimestamp = chars.count >= 18 && isAPRSTimestamp(chars, start: 11)
         let parsed = parsePositionBody(body, start: hasTimestamp ? 18 : 11, fallback: body)
+        let points = [dataPoint("State", state, "power", "green")] + parsed.dataPoints
         let text = [name, state, parsed.comment]
             .filter { !$0.isEmpty }
             .joined(separator: " - ")
-        return (parsed.latitude, parsed.longitude, text, parsed.symbol)
+        return (parsed.latitude, parsed.longitude, text, parsed.symbol, points)
     }
 
-    private func parseItemInfo(_ body: String) -> (latitude: Double?, longitude: Double?, text: String, symbol: APRSSymbol?) {
+    private func parseItemInfo(_ body: String) -> (latitude: Double?, longitude: Double?, text: String, symbol: APRSSymbol?, dataPoints: [APRSDataPoint]) {
         let chars = Array(body)
         guard chars.count > 2,
               let marker = chars.dropFirst().firstIndex(where: { $0 == "!" || $0 == "_" }) else {
-            return (nil, nil, body, nil)
+            return (nil, nil, body, nil, [])
         }
         let name = String(chars[1..<marker]).trimmingCharacters(in: .whitespaces)
         let parsed = parsePositionBody(body, start: marker + 1, fallback: body)
         let state = chars[marker] == "_" ? "deleted" : "live"
+        let points = [dataPoint("State", state, "power", "green")] + parsed.dataPoints
         let text = [name, state, parsed.comment]
             .filter { !$0.isEmpty }
             .joined(separator: " - ")
-        return (parsed.latitude, parsed.longitude, text, parsed.symbol)
+        return (parsed.latitude, parsed.longitude, text, parsed.symbol, points)
     }
 
     private func parsePositionBody(_ body: String, start: Int, fallback: String) -> ParsedPosition {
@@ -300,8 +375,8 @@ struct APRSService {
         let symbolTable = chars[start + 8]
         let symbolCode = chars[start + 18]
         let rawComment = chars.count > start + 19 ? String(chars.dropFirst(start + 19)) : ""
-        let comment = summarizePositionComment(rawComment, symbolCode: symbolCode)
-        return ParsedPosition(latitude: latitude, longitude: longitude, comment: comment, symbol: APRSSymbol(table: symbolTable, code: symbolCode))
+        let payload = summarizePositionComment(rawComment, symbolCode: symbolCode)
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: payload.body, symbol: APRSSymbol(table: symbolTable, code: symbolCode), dataPoints: payload.dataPoints)
     }
 
     private func parseCompressedPosition(_ body: String, start: Int) -> ParsedPosition? {
@@ -316,25 +391,25 @@ struct APRSService {
 
         let latitude = 90.0 - Double(latValue) / 380_926.0
         let longitude = -180.0 + Double(lonValue) / 190_463.0
-        var details: [String] = []
+        var dataPoints: [APRSDataPoint] = []
         if let courseValue = base91(chars[start + 10]),
            let speedValue = base91(chars[start + 11]),
            courseValue >= 0,
            courseValue < 90 {
             let course = courseValue * 4
             let speed = max(0, Int(pow(1.08, Double(speedValue)).rounded()) - 1)
-            details.append("course \(course) deg")
-            details.append("speed \(speed) kt")
+            dataPoints.append(dataPoint("Course", "\(course)°", "location.north.line", "blue"))
+            dataPoints.append(speedDataPoint(knots: speed))
         }
 
         let rawComment = chars.count > start + 13 ? String(chars.dropFirst(start + 13)) : ""
-        let comment = joinDetails(details, with: summarizePositionComment(rawComment, symbolCode: symbolCode))
-        return ParsedPosition(latitude: latitude, longitude: longitude, comment: comment, symbol: APRSSymbol(table: symbolTable, code: symbolCode))
+        let payload = summarizePositionComment(rawComment, symbolCode: symbolCode)
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: payload.body, symbol: APRSSymbol(table: symbolTable, code: symbolCode), dataPoints: dataPoints + payload.dataPoints)
     }
 
-    private func summarizePositionComment(_ rawComment: String, symbolCode: Character) -> String {
+    private func summarizePositionComment(_ rawComment: String, symbolCode: Character) -> ParsedPayload {
         var comment = rawComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        var details: [String] = []
+        var dataPoints: [APRSDataPoint] = []
 
         if comment.count >= 7 {
             let prefix = String(comment.prefix(7))
@@ -344,37 +419,41 @@ struct APRSService {
                parts[1].count == 3,
                let course = Int(parts[0]),
                let speed = Int(parts[1]) {
-                details.append("course \(course) deg")
-                details.append("speed \(speed) kt")
+                dataPoints.append(dataPoint("Course", "\(course)°", "location.north.line", "blue"))
+                dataPoints.append(speedDataPoint(knots: speed))
                 comment.removeFirst(7)
             }
         }
 
         if comment.hasPrefix("PHG"), comment.count >= 7 {
-            details.append("PHG \(String(comment.prefix(7)))")
+            dataPoints.append(dataPoint("PHG", String(comment.prefix(7)), "antenna.radiowaves.left.and.right", "purple"))
             comment.removeFirst(7)
         }
 
         if comment.hasPrefix("RNG"), comment.count >= 7 {
             let value = String(comment.dropFirst(3).prefix(4))
             if let range = Int(value) {
-                details.append("range \(range) mi")
+                dataPoints.append(dataPoint("Range", "\(range) mi", "scope", "purple"))
                 comment.removeFirst(7)
             }
         }
 
         if let altitude = extractAltitude(from: &comment) {
-            details.append("altitude \(altitude) ft")
+            dataPoints.append(dataPoint("Altitude", "\(altitude) ft", "mountain.2", "orange"))
         }
 
         if symbolCode == "_" {
             let weather = parseWeatherReport(comment)
-            if weather != comment {
-                comment = weather
+            if !weather.dataPoints.isEmpty {
+                comment = weather.body
+                dataPoints.append(contentsOf: weather.dataPoints)
             }
         }
 
-        return joinDetails(details, with: comment.trimmingCharacters(in: CharacterSet(charactersIn: " /,\t\r\n")))
+        return ParsedPayload(
+            body: comment.trimmingCharacters(in: CharacterSet(charactersIn: " /,\t\r\n")),
+            dataPoints: dataPoints
+        )
     }
 
     private func extractAltitude(from comment: inout String) -> Int? {
@@ -393,9 +472,9 @@ struct APRSService {
         return text
     }
 
-    private func parseWeatherReport(_ text: String) -> String {
+    private func parseWeatherReport(_ text: String) -> ParsedPayload {
         let chars = Array(text)
-        var fields: [String] = []
+        var dataPoints: [APRSDataPoint] = []
         let widths: [Character: Int] = ["c": 3, "s": 3, "g": 3, "t": 3, "r": 3, "p": 3, "P": 3, "h": 2, "b": 5, "L": 3, "l": 3, "X": 3]
         var index = 0
 
@@ -412,54 +491,54 @@ struct APRSService {
             }
             switch key {
             case "c":
-                fields.append("wind \(value) deg")
+                dataPoints.append(dataPoint("Wind dir", "\(value)°", "safari", "blue"))
             case "s":
-                fields.append("wind \(Int(value) ?? 0) kt")
+                dataPoints.append(dataPoint("Wind", "\(mph(fromKnots: Int(value) ?? 0)) mph", "wind", "blue"))
             case "g":
-                fields.append("gust \(Int(value) ?? 0) kt")
+                dataPoints.append(dataPoint("Gust", "\(mph(fromKnots: Int(value) ?? 0)) mph", "wind.snow", "blue"))
             case "t":
-                fields.append("temp \(Int(value) ?? 0) F")
+                dataPoints.append(dataPoint("Temp", "\(Int(value) ?? 0)°F", "thermometer.medium", "orange"))
             case "r":
-                fields.append("rain 1h \(hundredths(value)) in")
+                dataPoints.append(dataPoint("Rain 1h", "\(hundredths(value)) in", "cloud.rain", "teal"))
             case "p":
-                fields.append("rain 24h \(hundredths(value)) in")
+                dataPoints.append(dataPoint("Rain 24h", "\(hundredths(value)) in", "cloud.heavyrain", "teal"))
             case "P":
-                fields.append("rain since midnight \(hundredths(value)) in")
+                dataPoints.append(dataPoint("Rain today", "\(hundredths(value)) in", "drop", "teal"))
             case "h":
-                fields.append("humidity \(value == "00" ? "100" : value)%")
+                dataPoints.append(dataPoint("Humidity", "\(value == "00" ? "100" : value)%", "humidity", "cyan"))
             case "b":
                 if let pressure = Double(value) {
-                    fields.append(String(format: "pressure %.1f mb", pressure / 10.0))
+                    dataPoints.append(dataPoint("Pressure", String(format: "%.1f mb", pressure / 10.0), "barometer", "purple"))
                 }
             case "L", "l":
-                fields.append("luminosity \(value)")
+                dataPoints.append(dataPoint("Light", value, "sun.max", "yellow"))
             case "X":
-                fields.append("radiation \(value)")
+                dataPoints.append(dataPoint("Radiation", value, "waveform.path.ecg", "red"))
             default:
                 break
             }
             index += width + 1
         }
 
-        return fields.isEmpty ? text : fields.joined(separator: ", ")
+        return ParsedPayload(body: dataPoints.isEmpty ? text : "Weather report", dataPoints: dataPoints)
     }
 
-    private func parseTelemetryInfo(_ body: String) -> String {
+    private func parseTelemetryInfo(_ body: String) -> ParsedPayload {
         let payload = String(body.dropFirst(2))
         let parts = payload.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count >= 2 else { return body }
+        guard parts.count >= 2 else { return ParsedPayload(body: body) }
         let sequence = parts[0]
         let analog = parts.dropFirst().prefix(5).filter { !$0.isEmpty }
         let digital = parts.count > 6 ? parts[6] : ""
         let comment = parts.count > 7 ? parts.dropFirst(7).joined(separator: ",") : ""
-        var fields = ["seq \(sequence)"]
+        var dataPoints = [dataPoint("Sequence", sequence, "number", "blue")]
         if !analog.isEmpty {
-            fields.append("channels \(analog.joined(separator: "/"))")
+            dataPoints.append(dataPoint("Channels", analog.joined(separator: "/"), "waveform.path.ecg", "purple"))
         }
         if !digital.isEmpty {
-            fields.append("bits \(digital)")
+            dataPoints.append(dataPoint("Bits", digital, "switch.2", "purple"))
         }
-        return joinDetails(fields, with: comment)
+        return ParsedPayload(body: comment.isEmpty ? "Telemetry report" : comment, dataPoints: dataPoints)
     }
 
     private func parseThirdPartyInfo(_ body: String, relay: String?, timestamp: Date, depth: Int) -> ParsedPosition {
@@ -478,7 +557,8 @@ struct APRSService {
         let info = String(inner[inner.index(after: headerEnd)...])
         let parsed = parseInfo(info, source: source, destination: destination, destinationAddress: nil, relay: relay, timestamp: timestamp, depth: depth + 1)
         let prefix = "\(source)>\(destination)"
-        return ParsedPosition(latitude: parsed.latitude, longitude: parsed.longitude, comment: "\(prefix): \(parsed.type.rawValue) - \(parsed.body)", symbol: parsed.symbol)
+        let body = parsed.body.isEmpty ? "\(prefix): \(parsed.type.rawValue)" : "\(prefix): \(parsed.body)"
+        return ParsedPosition(latitude: parsed.latitude, longitude: parsed.longitude, comment: body, symbol: parsed.symbol, dataPoints: parsed.dataPoints)
     }
 
     private func parseUserDefinedInfo(_ body: String) -> String {
@@ -488,26 +568,37 @@ struct APRSService {
         return "user \(userID) - \(rest)"
     }
 
-    private func parseNMEAInfo(_ body: String) -> (latitude: Double?, longitude: Double?, body: String) {
+    private func parseNMEAInfo(_ body: String) -> (latitude: Double?, longitude: Double?, body: String, dataPoints: [APRSDataPoint]) {
         let fields = body.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-        guard let sentence = fields.first else { return (nil, nil, body) }
+        guard let sentence = fields.first else { return (nil, nil, body, []) }
 
         if sentence.hasSuffix("GGA"), fields.count > 9,
            let latitude = parseNMEACoordinate(fields[2], hemisphere: fields[3], degreeDigits: 2),
            let longitude = parseNMEACoordinate(fields[4], hemisphere: fields[5], degreeDigits: 3) {
-            let altitude = fields[9].isEmpty ? "" : ", altitude \(fields[9]) m"
-            return (latitude, longitude, "GPS fix\(altitude)")
+            var dataPoints: [APRSDataPoint] = []
+            if !fields[7].isEmpty {
+                dataPoints.append(dataPoint("Satellites", fields[7], "dot.radiowaves.left.and.right", "blue"))
+            }
+            if !fields[9].isEmpty {
+                dataPoints.append(dataPoint("Altitude", "\(fields[9]) m", "mountain.2", "orange"))
+            }
+            return (latitude, longitude, "GPS fix", dataPoints)
         }
 
         if sentence.hasSuffix("RMC"), fields.count > 8,
            let latitude = parseNMEACoordinate(fields[3], hemisphere: fields[4], degreeDigits: 2),
            let longitude = parseNMEACoordinate(fields[5], hemisphere: fields[6], degreeDigits: 3) {
-            let speed = fields[7].isEmpty ? "" : ", speed \(fields[7]) kt"
-            let course = fields[8].isEmpty ? "" : ", course \(fields[8]) deg"
-            return (latitude, longitude, "GPS fix\(speed)\(course)")
+            var dataPoints: [APRSDataPoint] = []
+            if let knots = Double(fields[7]) {
+                dataPoints.append(dataPoint("Speed", "\(Int((knots * 1.15078).rounded())) mph", "speedometer", "green"))
+            }
+            if !fields[8].isEmpty {
+                dataPoints.append(dataPoint("Course", "\(fields[8])°", "location.north.line", "blue"))
+            }
+            return (latitude, longitude, "GPS fix", dataPoints)
         }
 
-        return (nil, nil, "raw GPS - \(body)")
+        return (nil, nil, "raw GPS - \(body)", [])
     }
 
     private func parseMaidenheadInfo(_ body: String) -> (latitude: Double?, longitude: Double?, body: String) {
@@ -530,14 +621,14 @@ struct APRSService {
         }
 
         let speedCourse = parseMicESpeedCourse(info)
-        var details = ["Mic-E"]
+        var dataPoints = [dataPoint("Format", "Mic-E", "dot.radiowaves.left.and.right", "purple")]
         if let speedCourse {
-            details.append("course \(speedCourse.course) deg")
-            details.append("speed \(speedCourse.speed) kt")
+            dataPoints.append(dataPoint("Course", "\(speedCourse.course)°", "location.north.line", "blue"))
+            dataPoints.append(speedDataPoint(knots: speedCourse.speed))
         }
         let symbol = APRSSymbol(table: info[8], code: info[7])
         let comment = info.count > 9 ? String(info.dropFirst(9)).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        return ParsedPosition(latitude: latitude, longitude: longitude, comment: joinDetails(details, with: comment), symbol: symbol)
+        return ParsedPosition(latitude: latitude, longitude: longitude, comment: comment, symbol: symbol, dataPoints: dataPoints)
     }
 
     private func parseLatitude(_ text: String) -> Double? {
@@ -716,12 +807,16 @@ struct APRSService {
         return String(format: "%.2f", Double(integer) / 100.0)
     }
 
-    private func joinDetails(_ details: [String], with comment: String) -> String {
-        let cleanComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanDetails = details.filter { !$0.isEmpty }
-        if cleanDetails.isEmpty { return cleanComment }
-        if cleanComment.isEmpty { return cleanDetails.joined(separator: ", ") }
-        return "\(cleanDetails.joined(separator: ", ")) - \(cleanComment)"
+    private func speedDataPoint(knots: Int) -> APRSDataPoint {
+        dataPoint("Speed", "\(mph(fromKnots: knots)) mph", "speedometer", "green")
+    }
+
+    private func mph(fromKnots knots: Int) -> Int {
+        Int((Double(knots) * 1.15078).rounded())
+    }
+
+    private func dataPoint(_ label: String, _ value: String, _ systemImage: String, _ tint: String) -> APRSDataPoint {
+        APRSDataPoint(label: label, value: value, systemImage: systemImage, tint: tint)
     }
 
     private func ascii(_ char: Character) -> UInt8? {
@@ -737,10 +832,16 @@ private struct ParsedPosition {
     var longitude: Double?
     var comment: String
     var symbol: APRSSymbol?
+    var dataPoints: [APRSDataPoint] = []
 
     var body: String {
         comment
     }
+}
+
+private struct ParsedPayload {
+    var body: String
+    var dataPoints: [APRSDataPoint] = []
 }
 
 struct APRSSymbol: Equatable {
