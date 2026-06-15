@@ -13,6 +13,8 @@ private let txAudioBurstMode = CommandLine.arguments.contains("--tx-audio-burst"
 private let txAudioBurstFrames = max(1, intArgument("--tx-audio-frames", defaultValue: 20))
 private let txAudioIntervalMS = max(20, intArgument("--tx-audio-interval-ms", defaultValue: 40))
 private let aprsTNCMode = CommandLine.arguments.contains("--aprs-tnc")
+private let connectionHoldSeconds = intArgument("--hold-seconds", defaultValue: 0)
+private let aprsTNCClientKeepalive = CommandLine.arguments.contains("--client-keepalive")
 
 private func intArgument(_ name: String, defaultValue: Int) -> Int {
     let arguments = CommandLine.arguments
@@ -150,6 +152,8 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     private var helloDecoded = false
     private var pttCycleStarted = false
     private var pttOffSent = false
+    private var finishing = false
+    private var connectedAt: Date?
     private var timeoutWorkItem: DispatchWorkItem?
     private var helloTimeoutWorkItem: DispatchWorkItem?
 
@@ -157,6 +161,14 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
         print("KV4P BLE probe starting. This will scan, connect, subscribe, and wait for KISS/HELLO bytes.")
         if aprsTNCMode {
             print("APRS-TNC mode enabled: scanning standard BLE KISS service \(UUIDs.aprsService.uuidString).")
+            if connectionHoldSeconds > 0 {
+                print("APRS-TNC hold enabled: keeping the connection open for \(connectionHoldSeconds) second(s).")
+                if aprsTNCClientKeepalive {
+                    print("APRS-TNC client keepalive enabled: writing idle FEND bytes once per second.")
+                }
+            }
+        } else if connectionHoldSeconds > 0 {
+            print("Main-service hold enabled: keeping the connection open for \(connectionHoldSeconds) second(s) after HELLO.")
         }
         if appStateMode {
             print("App-state mode enabled: after HELLO, the probe will send desired state. RX audio open: \(rxAudioOpen).")
@@ -172,6 +184,7 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     }
 
     func finish(_ code: Int32) {
+        finishing = true
         timeoutWorkItem?.cancel()
         helloTimeoutWorkItem?.cancel()
         if let peripheral {
@@ -189,6 +202,12 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
         if appStateMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.sendDesiredStateIfNeeded()
+            }
+        } else if connectionHoldSeconds > 0 {
+            print("HELLO decoded. Holding main-service connection...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(connectionHoldSeconds)) { [weak self] in
+                print("Main-service hold completed without disconnect.")
+                self?.finish(0)
             }
         } else {
             finish(0)
@@ -357,6 +376,7 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        connectedAt = Date()
         print("Connected. Discovering \(aprsTNCMode ? "KV4P APRS TNC" : "KV4P") service...")
         peripheral.discoverServices([UUIDs.targetService])
     }
@@ -367,7 +387,12 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        print("Disconnected: \(error?.localizedDescription ?? "clean disconnect")")
+        let elapsed = connectedAt.map { String(format: "%.2f s", Date().timeIntervalSince($0)) } ?? "unknown duration"
+        print("Disconnected after \(elapsed): \(error?.localizedDescription ?? "clean disconnect")")
+        if !finishing {
+            print("Unexpected disconnect before the probe finished.")
+            finish(8)
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -411,8 +436,19 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
         }
         print("Notify state for \(characteristic.uuid.uuidString): \(characteristic.isNotifying)")
         if aprsTNCMode {
-            print("APRS TNC service is connectable and notifications are enabled.")
-            finish(0)
+            guard connectionHoldSeconds > 0 else {
+                print("APRS TNC service is connectable and notifications are enabled.")
+                finish(0)
+                return
+            }
+            print("APRS TNC service is connectable and notifications are enabled. Holding connection...")
+            if aprsTNCClientKeepalive {
+                scheduleAprsClientKeepalive()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(connectionHoldSeconds)) { [weak self] in
+                print("APRS TNC hold completed without disconnect.")
+                self?.finish(0)
+            }
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
@@ -432,6 +468,21 @@ private final class Probe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
             print("RX \(value.count) bytes: \(value.hexString)")
         }
         parser.feed(value)
+    }
+
+    private func scheduleAprsClientKeepalive() {
+        guard aprsTNCMode, !finishing else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self,
+                  !self.finishing,
+                  let peripheral = self.peripheral,
+                  let writeCharacteristic = self.writeCharacteristic else {
+                return
+            }
+            let keepalive = Data([Kiss.fend, Kiss.fend])
+            peripheral.writeValue(keepalive, for: writeCharacteristic, type: self.writeType)
+            self.scheduleAprsClientKeepalive()
+        }
     }
 
     private func sendDesiredStateIfNeeded() {

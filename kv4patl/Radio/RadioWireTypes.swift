@@ -21,6 +21,40 @@ enum DeviceMode: UInt8, Codable, Sendable {
 enum RfModuleType: UInt8, Codable, Sendable {
     case vhf = 0
     case uhf = 1
+
+    var displayName: String {
+        switch self {
+        case .vhf: "VHF"
+        case .uhf: "UHF"
+        }
+    }
+
+    var txLimitLabel: String {
+        switch self {
+        case .vhf: "2m"
+        case .uhf: "70cm"
+        }
+    }
+}
+
+struct RadioFrequencyRange: Equatable, Sendable {
+    var lowerMHz: Float
+    var upperMHz: Float
+
+    var isValid: Bool {
+        lowerMHz > 0 && upperMHz > lowerMHz
+    }
+
+    func contains(_ frequency: Float) -> Bool {
+        frequency >= lowerMHz && frequency <= upperMHz
+    }
+
+    func intersection(with other: RadioFrequencyRange) -> RadioFrequencyRange? {
+        let lower = max(lowerMHz, other.lowerMHz)
+        let upper = min(upperMHz, other.upperMHz)
+        guard lower <= upper else { return nil }
+        return RadioFrequencyRange(lowerMHz: lower, upperMHz: upper)
+    }
 }
 
 struct HostDesiredState: Equatable, Sendable {
@@ -100,6 +134,11 @@ struct FirmwareVersion: Equatable, Codable, Sendable {
     var hasHighLowPower: Bool { features & 0x01 != 0 }
     var hasPhysicalPTT: Bool { features & 0x02 != 0 }
     var hasEsp32AFSK: Bool { features & 0x04 != 0 }
+
+    var frequencyRange: RadioFrequencyRange? {
+        let range = RadioFrequencyRange(lowerMHz: minFrequency, upperMHz: maxFrequency)
+        return range.isValid ? range : nil
+    }
 
     init?(data: Data, offset: Int = 0) {
         guard data.count >= offset + Self.byteLength else { return nil }

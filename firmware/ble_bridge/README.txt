@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.1.
+Current shared development version: 0.2.3.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -25,10 +25,11 @@ vendor frames are ignored on this service so public APRS clients cannot change
 PTT, audio, or radio settings. Outbound received/transmitted AX.25 packets are
 mirrored to this service as standard KISS DATA frames.
 
-External APRS apps connect directly to this BLE KISS endpoint. If the KV4P iOS
-app is already connected to the radio's main BLE service, the radio may not be
-advertising for another central; disconnect or force quit the KV4P app before
-opening PocketPacket's Bluetooth TNC selector.
+External APRS apps connect directly to this BLE KISS endpoint. If the KV4P/ATL
+app is already connected to the radio's main BLE service, disconnect the KV4P/ATL
+app before opening another app's Bluetooth TNC selector. Testing on the KV4P HT
+ESP32 Arduino BLE stack showed that restarting advertising while a client was
+actively connected could make APRS TNC service discovery time out.
 
 Integration sketch for the upstream Arduino firmware
 1. Copy kv4p_ble_bridge.h and kv4p_ble_bridge.cpp into
@@ -70,16 +71,28 @@ The bridge requests a 247-byte ATT MTU, stores the server-side MTU callback
 payload size, and uses that value for notifications. Do not replace this with
 BLEDevice::getPeerDevices(false); that global peer list stayed at the default
 20-byte payload in Mac/iPhone testing and caused audio frames to be split across
-multiple notifications. On connect, the bridge requests a 15 ms BLE connection
-interval with zero slave latency and calls esp_ble_gap_set_pkt_data_len(...,
-251) so accepted links can carry the larger ATT payloads with less link-layer
-fragmentation.
+multiple notifications. On connect, the bridge requests an Apple-compatible
+15-30 ms BLE connection interval range with zero slave latency and calls
+esp_ble_gap_set_pkt_data_len(..., 251) so accepted links can carry the larger
+ATT payloads with less link-layer fragmentation.
 
-BLE reconnect and advertising note
+BLE reconnect, advertising, and APRS TNC reliability note
 The bridge restarts advertising immediately on disconnect and schedules a
 second restart about 500 ms later from loop(). This follows the Arduino-ESP32
 BLE UART example's delayed advertising restart pattern and makes the radio more
-findable after a central disconnect or a brief post-TX link drop.
+findable after a central disconnect or a brief post-TX link drop. Firmware 0.2.3
+also tracks connected central count and clears the main/TNC stream queues only
+when the last central disconnects. The primary advertisement contains the KV4P
+service UUID and the scan response contains the APRS KISS TNC service UUID plus
+the device name so both service-filtered scanners can find the radio without
+overflowing the BLE advertising payload.
+
+The APRS TNC notify path sends an idle `FEND FEND` KISS delimiter pair about
+once per second when the TNC is subscribed and no AX.25 packets are queued.
+Physical Mac BLE testing showed that an otherwise-idle secondary TNC connection
+timed out after about 8-12 seconds, while the main KV4P service stayed connected
+with continuous radio-to-client notifications. The empty KISS frame is ignored
+by normal KISS parsers and keeps the ESP32/CoreBluetooth notification path warm.
 
 RX power-save note
 0.2.1 adds two host-state flags:

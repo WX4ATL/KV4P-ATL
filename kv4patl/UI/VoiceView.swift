@@ -209,8 +209,13 @@ struct VoiceView: View {
     }
 
     private func commitFrequency() {
-        guard let rx = Float(rxFrequencyText) else { return }
+        let rx = Float(rxFrequencyText)
         let tx = Float(txFrequencyText) ?? rx
+        if let message = app.frequencyValidationMessage(rx: rx, tx: tx) {
+            app.statusLine = message
+            return
+        }
+        guard let rx, let tx else { return }
         txTone = RadioToneHelper.normalize(txTone)
         rxTone = RadioToneHelper.normalize(rxTone)
         app.tuneDirect(rx: rx, tx: tx, txTone: txTone, rxTone: rxTone)
@@ -228,6 +233,10 @@ struct VoiceView: View {
         focusedFrequencyField = nil
         let rx = (Float(rxFrequencyText) ?? app.activeRxFrequency) + delta
         let tx = (Float(txFrequencyText) ?? app.activeTxFrequency) + delta
+        if let message = app.frequencyValidationMessage(rx: rx, tx: tx) {
+            app.statusLine = message
+            return
+        }
         rxFrequencyText = String(format: "%.4f", rx)
         txFrequencyText = String(format: "%.4f", tx)
         app.tuneDirect(rx: rx, tx: tx, txTone: txTone, rxTone: rxTone)

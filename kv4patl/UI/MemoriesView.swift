@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct MemoriesView: View {
     @EnvironmentObject private var app: AppState
     @State private var showingEditor = false
-    @State private var showingRepeaterImport = false
     @State private var editingMemory: ChannelMemory?
     @State private var searchText = ""
     @State private var selectedGroup = "All"
@@ -20,7 +18,7 @@ struct MemoriesView: View {
 
             Section {
                 if filteredMemories.isEmpty {
-                    ContentUnavailableView("No memories", systemImage: "list.bullet.rectangle", description: Text("Add a channel or import a repeater CSV."))
+                    ContentUnavailableView("No memories", systemImage: "list.bullet.rectangle", description: Text("Add a memory channel."))
                 } else {
                     ForEach(filteredMemories) { memory in
                         Button {
@@ -69,11 +67,6 @@ struct MemoriesView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
-                    showingRepeaterImport = true
-                } label: {
-                    Label("Import repeaters", systemImage: "arrow.down.doc")
-                }
-                Button {
                     showingEditor = true
                 } label: {
                     Label("Add memory", systemImage: "plus")
@@ -85,9 +78,6 @@ struct MemoriesView: View {
         }
         .sheet(item: $editingMemory) { memory in
             MemoryEditorView(memory: memory)
-        }
-        .sheet(isPresented: $showingRepeaterImport) {
-            RepeaterImportView()
         }
     }
 
@@ -224,158 +214,6 @@ struct MemoryRow: View {
     }
 }
 
-struct RepeaterImportView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var app: AppState
-    @State private var group = "Nearby"
-    @State private var repeaters: [RepeaterInfo] = []
-    @State private var showingImporter = false
-    @State private var showingImportHelp = false
-    @State private var status = "No CSV selected."
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("CSV file") {
-                    Button {
-                        showingImporter = true
-                    } label: {
-                        Label("Import CSV", systemImage: "doc.badge.plus")
-                    }
-                    Button {
-                        showingImportHelp = true
-                    } label: {
-                        Label("Import help", systemImage: "questionmark.circle")
-                    }
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Import") {
-                    TextField("Memory group", text: $group)
-                    Button {
-                        app.importRepeaters(repeaters, group: group.isEmpty ? "Nearby" : group)
-                        dismiss()
-                    } label: {
-                        Label("Save \(repeaters.count) repeaters", systemImage: "square.and.arrow.down")
-                    }
-                    .disabled(repeaters.isEmpty)
-                }
-
-                Section("Preview") {
-                    if repeaters.isEmpty {
-                        ContentUnavailableView("No CSV loaded", systemImage: "antenna.radiowaves.left.and.right", description: Text(status))
-                    } else {
-                        ForEach(repeaters.prefix(30)) { repeater in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(repeater.callsign.isEmpty ? "Repeater" : repeater.callsign)
-                                        .font(.headline)
-                                    Spacer()
-                                    Text(String(format: "%.4f", repeater.frequency))
-                                        .font(.system(.body, design: .monospaced))
-                                }
-                                Text("\(repeater.location), \(repeater.state) - \(offsetLabel(repeater.offsetMHz)) - TX \(repeater.tone)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Repeaters")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .fileImporter(
-                isPresented: $showingImporter,
-                allowedContentTypes: [.commaSeparatedText, .delimitedText, .text, .plainText, .data, .item]
-            ) { result in
-                importCSV(result)
-            }
-            .sheet(isPresented: $showingImportHelp) {
-                RepeaterImportHelpView()
-            }
-        }
-    }
-
-    private func importCSV(_ result: Result<URL, Error>) {
-        do {
-            let url = try result.get()
-            guard isSupportedCSVURL(url) else {
-                status = "Choose a .csv or text export file."
-                return
-            }
-            let allowed = url.startAccessingSecurityScopedResource()
-            defer {
-                if allowed {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            let csv = try loadCSVText(from: url)
-            let minFrequency = app.firmwareVersion?.minFrequency ?? 0
-            let maxFrequency = app.firmwareVersion?.maxFrequency ?? 1_000
-            repeaters = RepeaterCSVParser.parse(csv, minFrequency: minFrequency, maxFrequency: maxFrequency)
-            status = repeaters.isEmpty ? "No supported repeater rows found in that CSV." : "Loaded \(repeaters.count) repeaters."
-        } catch {
-            status = error.localizedDescription
-        }
-    }
-
-    private func isSupportedCSVURL(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        return ["csv", "txt", "tsv"].contains(ext)
-    }
-
-    private func loadCSVText(from url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
-        let encodings: [String.Encoding] = [.utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .isoLatin1, .ascii]
-        for encoding in encodings {
-            if let text = String(data: data, encoding: encoding) {
-                return text
-            }
-        }
-        throw CocoaError(.fileReadInapplicableStringEncoding)
-    }
-
-    private func offsetLabel(_ offset: Float) -> String {
-        if offset == 0 { return "simplex" }
-        return String(format: "%+.3f MHz", offset)
-    }
-}
-
-private struct RepeaterImportHelpView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("How to import") {
-                    Label("Use a repeater directory or radio-planning site in your browser.", systemImage: "safari")
-                    Label("Search your area and band, then export or download a CSV channel list.", systemImage: "magnifyingglass")
-                    Label("Save the CSV to Files, iCloud Drive, or Downloads.", systemImage: "folder")
-                    Label("Return here, tap Import CSV, select that file, preview the rows, then save them.", systemImage: "square.and.arrow.down")
-                }
-                Section("Coordinates") {
-                    Text("Most channel CSV exports contain frequencies, offsets, tones, names, and locations as text, but not latitude and longitude. KV4P/ATL imports those rows as radio memories. Map-distance sorting would need a separate coordinate-capable export in a future importer.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("Import Help")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
 struct MemoryEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var app: AppState
@@ -408,6 +246,11 @@ struct MemoryEditorView: View {
                     TextField("Group", text: $group)
                     TextField("RX frequency", text: $frequency)
                         .keyboardType(.decimalPad)
+                    if let frequencyValidationMessage {
+                        Text(frequencyValidationMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 Section("Repeater") {
@@ -433,6 +276,7 @@ struct MemoryEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        guard frequencyValidationMessage == nil else { return }
                         var memory = ChannelMemory(
                             name: name.isEmpty ? "Memory" : name,
                             group: group,
@@ -451,6 +295,7 @@ struct MemoryEditorView: View {
                         }
                         dismiss()
                     }
+                    .disabled(frequencyValidationMessage != nil)
                 }
             }
             .sheet(item: $activeToneSelector) { selector in
@@ -460,6 +305,23 @@ struct MemoryEditorView: View {
                 )
             }
         }
+    }
+
+    private var frequencyValidationMessage: String? {
+        guard let rx = Float(frequency) else {
+            return "Enter an RX frequency."
+        }
+        let memory = ChannelMemory(
+            name: name.isEmpty ? "Memory" : name,
+            group: group,
+            frequency: rx,
+            offset: offset,
+            offsetKHz: offsetKHz,
+            txTone: txTone,
+            rxTone: rxTone,
+            skipDuringScan: false
+        )
+        return app.frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency)
     }
 
     private enum MemoryToneSelector: String, Identifiable {

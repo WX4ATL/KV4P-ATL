@@ -126,14 +126,21 @@ struct SettingsView: View {
             }
 
             Section("Limits") {
-                TextField("Min 2m TX frequency", text: $app.settings.min2mTx)
-                    .keyboardType(.decimalPad)
-                TextField("Max 2m TX frequency", text: $app.settings.max2mTx)
-                    .keyboardType(.decimalPad)
-                TextField("Min 70cm TX frequency", text: $app.settings.min70cmTx)
-                    .keyboardType(.decimalPad)
-                TextField("Max 70cm TX frequency", text: $app.settings.max70cmTx)
-                    .keyboardType(.decimalPad)
+                LabeledContent("Detected module", value: app.radioModuleSummary)
+                if let moduleType = app.detectedRfModuleType {
+                    txLimitFields(for: moduleType)
+                    if let effectiveRange = app.effectiveTXRange(for: moduleType) {
+                        Text("Effective TX range: \(frequencyRangeText(effectiveRange)) MHz.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Connect the radio to expose only the installed SA818 module band.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    txLimitFields(for: .vhf)
+                    txLimitFields(for: .uhf)
+                }
             }
 
             Section("Accessibility") {
@@ -141,7 +148,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.1")
+                LabeledContent("App version", value: "0.2.3")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
@@ -177,6 +184,26 @@ struct SettingsView: View {
         Text(title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func txLimitFields(for moduleType: RfModuleType) -> some View {
+        switch moduleType {
+        case .vhf:
+            TextField("Min 2m TX frequency", text: $app.settings.min2mTx)
+                .keyboardType(.decimalPad)
+            TextField("Max 2m TX frequency", text: $app.settings.max2mTx)
+                .keyboardType(.decimalPad)
+        case .uhf:
+            TextField("Min 70cm TX frequency", text: $app.settings.min70cmTx)
+                .keyboardType(.decimalPad)
+            TextField("Max 70cm TX frequency", text: $app.settings.max70cmTx)
+                .keyboardType(.decimalPad)
+        }
+    }
+
+    private func frequencyRangeText(_ range: RadioFrequencyRange) -> String {
+        "\(AppState.formatFrequency(range.lowerMHz))-\(AppState.formatFrequency(range.upperMHz))"
     }
 
 }

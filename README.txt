@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.2.1.
+Current shared development version: 0.2.3.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -64,7 +64,7 @@ Notes:
 - The web flasher includes a generated v17 BLE firmware image and manifest. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source so future upstream releases do not require a hand-maintained fork.
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
-- Memories now imports compatible repeater CSV exports instead of adding a fake sample repeater.
-- Current source-build status: generic iOS device build passed, simulator build/test passed, and BLE firmware esp32dev-release build passed on 2026-06-13 for shared version 0.2.1.
+- Memories are managed manually in-app; the previous CSV repeater importer has been removed.
+- Current source-build status: simulator build/test passed, BLE firmware esp32dev-release build passed, and the physical KV4P HT was flashed/verified on 2026-06-15 for shared version 0.2.3.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
-- RX power save is optional and receive-safe in 0.2.1. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.
+- RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.

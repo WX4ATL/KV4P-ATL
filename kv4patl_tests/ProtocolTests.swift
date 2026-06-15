@@ -110,7 +110,23 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(hello?.firmware.version, 17)
         XCTAssertEqual(hello?.firmware.windowSize, 4096)
         XCTAssertEqual(hello?.firmware.moduleType, .vhf)
+        XCTAssertEqual(hello?.firmware.frequencyRange?.lowerMHz, 144.0)
+        XCTAssertEqual(hello?.firmware.frequencyRange?.upperMHz, 148.0)
+        XCTAssertTrue(hello?.firmware.frequencyRange?.contains(146.52) == true)
+        XCTAssertFalse(hello?.firmware.frequencyRange?.contains(440.0) == true)
         XCTAssertEqual(hello?.state.latestRSSI, 88)
+    }
+
+    func testFirmwareHelloExposesUHFFrequencyRange() {
+        let firmware = FirmwareVersion(data: makeFirmwareBytes(moduleType: .uhf, minFrequency: 420.0, maxFrequency: 450.0))
+
+        XCTAssertEqual(firmware?.moduleType, .uhf)
+        XCTAssertEqual(firmware?.moduleType.displayName, "UHF")
+        XCTAssertEqual(firmware?.moduleType.txLimitLabel, "70cm")
+        XCTAssertEqual(firmware?.frequencyRange?.lowerMHz, 420.0)
+        XCTAssertEqual(firmware?.frequencyRange?.upperMHz, 450.0)
+        XCTAssertTrue(firmware?.frequencyRange?.contains(446.0) == true)
+        XCTAssertFalse(firmware?.frequencyRange?.contains(146.52) == true)
     }
 
     func testAX25RoundTripAndAPRSMessage() throws {
@@ -293,24 +309,6 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNoThrow(try codec.resetDecoder())
     }
 
-    func testRepeaterCSVParsesOffsetAndToneMemory() {
-        let csv = """
-        Freq,Input,Offset,Tone,Location,State,County,Call,Use,Miles,Bearing,Mode
-        146.940,146.340,-0.600,100.0,"Stone Mountain, GA",GA,DeKalb,W4XYZ,OPEN,12.3,NE,FM
-        """
-
-        let repeaters = RepeaterCSVParser.parse(csv, minFrequency: 144, maxFrequency: 148)
-        XCTAssertEqual(repeaters.count, 1)
-        XCTAssertEqual(repeaters[0].tone, "100")
-
-        let memory = RepeaterCSVParser.memory(from: repeaters[0], group: "Nearby")
-        XCTAssertEqual(memory.offset, .down)
-        XCTAssertEqual(memory.offsetKHz, 600)
-        XCTAssertEqual(memory.frequency, 146.940, accuracy: 0.0001)
-        XCTAssertEqual(memory.txFrequency, 146.340, accuracy: 0.0001)
-        XCTAssertEqual(memory.txTone, "100")
-    }
-
     func testAppSettingsDecodeProvidesDefaultsForNewSplitToneFields() throws {
         let data = Data(#"{"callsign":"WX4ATL","stickyPTT":true}"#.utf8)
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
@@ -388,14 +386,19 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(AppState.calculateSMeterValue(forRSSI: 180), 9)
     }
 
-    private func makeFirmwareBytes(windowSize: UInt32 = 4096) -> Data {
+    private func makeFirmwareBytes(
+        windowSize: UInt32 = 4096,
+        moduleType: RfModuleType = .vhf,
+        minFrequency: Float32 = 144.0,
+        maxFrequency: Float32 = 148.0
+    ) -> Data {
         var data = Data()
         data.appendLittleEndian(UInt16(17))
         data.append(RadioStatus.found.rawValue)
         data.appendLittleEndian(windowSize)
-        data.append(RfModuleType.vhf.rawValue)
-        data.appendFloat32(144.0)
-        data.appendFloat32(148.0)
+        data.append(moduleType.rawValue)
+        data.appendFloat32(minFrequency)
+        data.appendFloat32(maxFrequency)
         data.append(0x07)
         return data
     }

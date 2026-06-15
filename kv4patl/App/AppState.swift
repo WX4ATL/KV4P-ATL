@@ -142,6 +142,72 @@ final class AppState: ObservableObject {
         transportIsConnected
     }
 
+    var radioFrequencyRange: RadioFrequencyRange? {
+        firmwareVersion?.frequencyRange
+    }
+
+    var detectedRfModuleType: RfModuleType? {
+        firmwareVersion?.moduleType
+    }
+
+    var radioModuleSummary: String {
+        guard let firmwareVersion else {
+            return "Unknown until radio connects"
+        }
+        if let range = firmwareVersion.frequencyRange {
+            return "\(firmwareVersion.moduleType.displayName) \(Self.formatFrequency(range.lowerMHz))-\(Self.formatFrequency(range.upperMHz)) MHz"
+        }
+        return firmwareVersion.moduleType.displayName
+    }
+
+    func configuredTXRange(for moduleType: RfModuleType) -> RadioFrequencyRange {
+        switch moduleType {
+        case .vhf:
+            return RadioFrequencyRange(
+                lowerMHz: Float(settings.min2mTx) ?? 144,
+                upperMHz: Float(settings.max2mTx) ?? 148
+            )
+        case .uhf:
+            return RadioFrequencyRange(
+                lowerMHz: Float(settings.min70cmTx) ?? 420,
+                upperMHz: Float(settings.max70cmTx) ?? 450
+            )
+        }
+    }
+
+    func effectiveTXRange(for moduleType: RfModuleType) -> RadioFrequencyRange? {
+        let configured = configuredTXRange(for: moduleType)
+        guard configured.isValid else { return nil }
+        guard firmwareVersion?.moduleType == moduleType,
+              let radioFrequencyRange else {
+            return configured
+        }
+        return configured.intersection(with: radioFrequencyRange)
+    }
+
+    func frequencyValidationMessage(rx: Float?, tx: Float?) -> String? {
+        guard let rx else {
+            return "Enter an RX frequency."
+        }
+        guard let tx else {
+            return "Enter a TX frequency."
+        }
+        if let radioFrequencyRange, !radioFrequencyRange.contains(rx) {
+            return "RX must be within \(radioModuleSummary)."
+        }
+        if let radioFrequencyRange, !radioFrequencyRange.contains(tx) {
+            return "TX must be within \(radioModuleSummary)."
+        }
+        if !isTxAllowed(tx) {
+            return "TX frequency is outside the configured \(detectedRfModuleType?.txLimitLabel ?? "ham band") limits."
+        }
+        return nil
+    }
+
+    nonisolated static func formatFrequency(_ frequency: Float) -> String {
+        String(format: "%.4f", frequency)
+    }
+
     func toggleRadioConnection() {
         radioIsConnected ? disconnect() : connect()
     }
@@ -205,6 +271,10 @@ final class AppState: ObservableObject {
     }
 
     func addMemory(_ memory: ChannelMemory) {
+        guard frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) == nil else {
+            statusLine = frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) ?? "Memory frequency is outside radio limits."
+            return
+        }
         memories.append(memory)
         store.saveMemories(memories)
     }
@@ -215,6 +285,10 @@ final class AppState: ObservableObject {
     }
 
     func updateMemory(_ memory: ChannelMemory) {
+        guard frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) == nil else {
+            statusLine = frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) ?? "Memory frequency is outside radio limits."
+            return
+        }
         guard let index = memories.firstIndex(where: { $0.id == memory.id }) else {
             addMemory(memory)
             return
@@ -227,6 +301,10 @@ final class AppState: ObservableObject {
     }
 
     func tune(_ memory: ChannelMemory) {
+        if let message = frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) {
+            statusLine = message
+            return
+        }
         activeFrequency = memory.frequency
         activeMemoryName = memory.name
         activeMemoryId = memory.radioMemoryId
@@ -242,6 +320,10 @@ final class AppState: ObservableObject {
     }
 
     func tuneDirect(rx: Float, tx: Float, txTone: String, rxTone: String) {
+        if let message = frequencyValidationMessage(rx: rx, tx: tx) {
+            statusLine = message
+            return
+        }
         activeFrequency = rx
         activeRxFrequency = rx
         activeTxFrequency = tx
@@ -272,8 +354,8 @@ final class AppState: ObservableObject {
             clearTransmitStartState(for: request)
             return
         }
-        guard isTxAllowed(activeTxFrequency) else {
-            statusLine = "TX frequency is outside your configured ham band limits."
+        if let message = frequencyValidationMessage(rx: activeRxFrequency, tx: activeTxFrequency) {
+            statusLine = message
             clearTransmitStartState(for: request)
             return
         }
@@ -509,19 +591,6 @@ final class AppState: ObservableObject {
         sendPositionBeacon()
     }
 
-    func importRepeaterSample() {
-        let sample = ChannelMemory(name: "Repeater Sample", group: "Nearby", frequency: 146.9400, offset: .down, offsetKHz: 600, txTone: "100.0", rxTone: "None", skipDuringScan: false)
-        addMemory(sample)
-        statusLine = "Sample repeater imported."
-    }
-
-    func importRepeaters(_ repeaters: [RepeaterInfo], group: String) {
-        let imported = repeaters.map { RepeaterCSVParser.memory(from: $0, group: group) }
-        memories.append(contentsOf: imported)
-        store.saveMemories(memories)
-        statusLine = "Imported \(imported.count) repeater memories."
-    }
-
     private func handle(_ event: KV4PTransportEvent) {
         switch event {
         case .state(let state):
@@ -608,6 +677,10 @@ final class AppState: ObservableObject {
         priority: KV4PTransportPriority = .normal,
         waitUntilQueued: Bool = false
     ) {
+        if let message = frequencyValidationMessage(rx: activeRxFrequency, tx: activeTxFrequency) {
+            statusLine = message
+            return
+        }
         sendDesiredState(
             memoryId: activeMemoryId,
             tx: activeTxFrequency,
@@ -861,12 +934,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func isTxAllowed(_ frequency: Float) -> Bool {
-        let min2m = Float(settings.min2mTx) ?? 144
-        let max2m = Float(settings.max2mTx) ?? 148
-        let min70cm = Float(settings.min70cmTx) ?? 420
-        let max70cm = Float(settings.max70cmTx) ?? 450
-        return (frequency >= min2m && frequency <= max2m) || (frequency >= min70cm && frequency <= max70cm)
+    func isTxAllowed(_ frequency: Float) -> Bool {
+        if let moduleType = firmwareVersion?.moduleType {
+            return effectiveTXRange(for: moduleType)?.contains(frequency) ?? false
+        }
+        let vhf = configuredTXRange(for: .vhf)
+        let uhf = configuredTXRange(for: .uhf)
+        return (vhf.isValid && vhf.contains(frequency)) || (uhf.isValid && uhf.contains(frequency))
     }
 
     nonisolated static func calculateSMeterValue(forRSSI rssi: UInt8) -> Int {

@@ -94,8 +94,12 @@ public:
   bool isReady() const;
   bool isAprsTncReady() const;
   void loop();
-  void requestAdvertisingRestart(uint32_t delayMs = 500);
+  void requestAdvertisingRestart(uint32_t delayMs = 500, bool allowWhileConnected = false);
   void cancelAdvertisingRestart();
+  void noteClientConnected();
+  bool noteClientDisconnected();
+  bool hasConnectedClient() const;
+  uint8_t connectedClientCount() const;
 
 private:
   KV4PBleBridgeStream &_stream;
@@ -106,6 +110,9 @@ private:
   BLECharacteristic *_aprsRxCharacteristic = nullptr;
   BLECharacteristic *_aprsTxCharacteristic = nullptr;
   volatile bool _advertisingRestartPending = false;
+  volatile bool _advertisingRestartAllowedWhileConnected = false;
+  volatile uint8_t _connectedClients = 0;
   uint32_t _advertisingRestartAtMs = 0;
+  uint32_t _lastAprsTncKeepaliveMs = 0;
   void restartAdvertising();
 };

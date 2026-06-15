@@ -22,6 +22,11 @@ static constexpr uint16_t HOST_STATE_PTT_REQUESTED = 0x0002;
 static constexpr uint8_t KV4P_VENDOR_PREFIX[] = {'K', 'V', '4', 'P'};
 static constexpr size_t HOST_DESIRED_STATE_LEN = 22;
 static constexpr size_t HOST_DESIRED_STATE_FLAGS_OFFSET = 8;
+static constexpr uint16_t APPLE_CONN_INTERVAL_15_MS = 12;
+static constexpr uint16_t APPLE_CONN_INTERVAL_30_MS = 24;
+static constexpr uint16_t BLE_SUPERVISION_TIMEOUT_4S = 400;
+static constexpr uint32_t BLE_RE_ADVERTISE_AFTER_DISCONNECT_MS = 500;
+static constexpr uint32_t APRS_TNC_KEEPALIVE_INTERVAL_MS = 1000;
 
 bool isUrgentPttOffFrame(const uint8_t *data, size_t len) {
   if (data == nullptr || len == 0) {
@@ -92,31 +97,26 @@ public:
     : _stream(stream), _aprsTncStream(aprsTncStream), _bridge(bridge) {}
 
   void onConnect(BLEServer *) override {
+    // Arduino-ESP32 invokes this legacy callback before the parameterized
+    // callback. Arm the streams here, but count the central only once below.
     _bridge.cancelAdvertisingRestart();
-    _stream.setConnected(true);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setConnected(true);
-    }
-    _stream.setNotifyPayloadSize(20);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setNotifyPayloadSize(20);
-    }
+    armStreams();
   }
 
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override {
     _bridge.cancelAdvertisingRestart();
-    _stream.setConnected(true);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setConnected(true);
-    }
-    _stream.setNotifyPayloadSize(20);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setNotifyPayloadSize(20);
-    }
+    _bridge.noteClientConnected();
+    armStreams();
     if (server != nullptr && param != nullptr) {
-      // Voice frames arrive every 20 ms. A steady 15 ms interval follows
-      // Apple's BLE accessory guidance while avoiding 30 ms batching jitter.
-      server->updateConnParams(param->connect.remote_bda, 12, 12, 0, 400);
+      // Apple accepts a 15 ms minimum when the maximum is at least 30 ms. A
+      // range is more stable for third-party APRS apps than forcing 15/15 ms.
+      server->updateConnParams(
+        param->connect.remote_bda,
+        APPLE_CONN_INTERVAL_15_MS,
+        APPLE_CONN_INTERVAL_30_MS,
+        0,
+        BLE_SUPERVISION_TIMEOUT_4S
+      );
       // Match the 247-byte ATT MTU path with the largest BLE data PDU the
       // ESP32 stack can request, reducing link-layer fragmentation jitter.
       esp_ble_gap_set_pkt_data_len(param->connect.remote_bda, 251);
@@ -124,20 +124,25 @@ public:
   }
 
   void onDisconnect(BLEServer *server) override {
-    _stream.setConnected(false);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setConnected(false);
-    }
-    _stream.setNotifyPayloadSize(20);
-    if (_aprsTncStream != nullptr) {
-      _aprsTncStream->setNotifyPayloadSize(20);
+    const bool clientsRemain = _bridge.noteClientDisconnected();
+    if (!clientsRemain) {
+      _stream.setConnected(false);
+      if (_aprsTncStream != nullptr) {
+        _aprsTncStream->setConnected(false);
+      }
+      _stream.setNotifyPayloadSize(20);
+      if (_aprsTncStream != nullptr) {
+        _aprsTncStream->setNotifyPayloadSize(20);
+      }
+    } else {
+      armStreams();
     }
     if (server != nullptr) {
       server->startAdvertising();
     }
     // ESP32 BLE UART examples restart advertising after the disconnect event
     // has settled. Keep the immediate restart, then retry once from loop().
-    _bridge.requestAdvertisingRestart(500);
+    _bridge.requestAdvertisingRestart(BLE_RE_ADVERTISE_AFTER_DISCONNECT_MS, clientsRemain);
   }
 
   void onMtuChanged(BLEServer *, esp_ble_gatts_cb_param_t *param) override {
@@ -155,6 +160,17 @@ public:
   }
 
 private:
+  void armStreams() {
+    _stream.setConnected(true);
+    if (_aprsTncStream != nullptr) {
+      _aprsTncStream->setConnected(true);
+    }
+    _stream.setNotifyPayloadSize(20);
+    if (_aprsTncStream != nullptr) {
+      _aprsTncStream->setNotifyPayloadSize(20);
+    }
+  }
+
   KV4PBleBridgeStream &_stream;
   KV4PBleBridgeStream *_aprsTncStream;
   KV4PBleBridge &_bridge;
@@ -448,10 +464,9 @@ void KV4PBleBridge::begin(const char *deviceName) {
   }
   advertising->setAdvertisementData(advertisementData);
   advertising->setScanResponseData(scanResponseData);
-  advertising->addServiceUUID(KV4P_BLE_SERVICE_UUID);
-  if (_aprsTncStream != nullptr) {
-    advertising->addServiceUUID(KV4P_APRS_BLE_SERVICE_UUID);
-  }
+  // Keep the two 128-bit UUIDs in explicit primary/scan-response packets. The
+  // 31-byte BLE advertising limit cannot reliably hold both plus the device
+  // name, and addServiceUUID() can make service-filtered discovery flaky.
   advertising->setScanResponse(true);
   advertising->setMinInterval(0x20);
   advertising->setMaxInterval(0x40);
@@ -469,7 +484,7 @@ KV4PBleBridgeStream *KV4PBleBridge::aprsTncStream() {
 }
 
 bool KV4PBleBridge::isConnected() const {
-  return _stream.isConnected();
+  return _stream.isConnected() || hasConnectedClient();
 }
 
 bool KV4PBleBridge::isReady() const {
@@ -480,13 +495,36 @@ bool KV4PBleBridge::isAprsTncReady() const {
   return _aprsTncStream != nullptr && _aprsTncStream->isReady();
 }
 
-void KV4PBleBridge::requestAdvertisingRestart(uint32_t delayMs) {
+void KV4PBleBridge::requestAdvertisingRestart(uint32_t delayMs, bool allowWhileConnected) {
   _advertisingRestartPending = true;
+  _advertisingRestartAllowedWhileConnected = allowWhileConnected;
   _advertisingRestartAtMs = millis() + delayMs;
 }
 
 void KV4PBleBridge::cancelAdvertisingRestart() {
   _advertisingRestartPending = false;
+  _advertisingRestartAllowedWhileConnected = false;
+}
+
+void KV4PBleBridge::noteClientConnected() {
+  if (_connectedClients < UINT8_MAX) {
+    _connectedClients++;
+  }
+}
+
+bool KV4PBleBridge::noteClientDisconnected() {
+  if (_connectedClients > 0) {
+    _connectedClients--;
+  }
+  return _connectedClients > 0;
+}
+
+bool KV4PBleBridge::hasConnectedClient() const {
+  return _connectedClients > 0;
+}
+
+uint8_t KV4PBleBridge::connectedClientCount() const {
+  return _connectedClients;
 }
 
 void KV4PBleBridge::restartAdvertising() {
@@ -498,12 +536,27 @@ void KV4PBleBridge::restartAdvertising() {
 void KV4PBleBridge::loop() {
   _stream.pumpNotifications();
   if (_aprsTncStream != nullptr) {
+    const uint32_t now = millis();
+    if (_aprsTncStream->isReady() &&
+        _aprsTncStream->queuedTxBytes() == 0 &&
+        (_lastAprsTncKeepaliveMs == 0 ||
+         static_cast<int32_t>(now - _lastAprsTncKeepaliveMs) >= static_cast<int32_t>(APRS_TNC_KEEPALIVE_INTERVAL_MS))) {
+      // Some iOS APRS clients leave the KISS TNC idle for long stretches after
+      // subscribing. Two FEND bytes are an empty KISS frame, ignored by KISS
+      // parsers, but keep peripheral-to-central BLE traffic alive.
+      static const uint8_t idleKissFrame[] = {KISS_FEND, KISS_FEND};
+      _aprsTncStream->write(idleKissFrame, sizeof(idleKissFrame));
+      _lastAprsTncKeepaliveMs = now;
+    } else if (!_aprsTncStream->isReady()) {
+      _lastAprsTncKeepaliveMs = 0;
+    }
     _aprsTncStream->pumpNotifications();
   }
   if (_advertisingRestartPending &&
-      !_stream.isConnected() &&
+      (_advertisingRestartAllowedWhileConnected || !hasConnectedClient()) &&
       static_cast<int32_t>(millis() - _advertisingRestartAtMs) >= 0) {
     _advertisingRestartPending = false;
+    _advertisingRestartAllowedWhileConnected = false;
     restartAdvertising();
   }
 }

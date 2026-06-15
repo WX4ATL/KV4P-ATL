@@ -2,11 +2,13 @@
 import MapKit
 import SwiftUI
 
-enum APRSSection: String, CaseIterable {
+enum APRSSection: String {
     case map = "Map"
     case messages = "Messages"
     case beacons = "Beacons"
     case packets = "Packets"
+
+    static let visibleSections: [APRSSection] = [.map, .messages, .beacons, .packets]
 }
 
 struct APRSChatView: View {
@@ -53,7 +55,7 @@ struct APRSChatView: View {
 
     private var sectionPicker: some View {
         Picker("APRS", selection: $section) {
-            ForEach(APRSSection.allCases, id: \.self) { section in
+            ForEach(APRSSection.visibleSections, id: \.self) { section in
                 Text(section.rawValue).tag(section)
             }
         }
@@ -228,7 +230,7 @@ struct APRSChatView: View {
         }).first else {
             return .map
         }
-        return APRSSection.allCases.first { $0.rawValue.caseInsensitiveCompare(raw) == .orderedSame } ?? .map
+        return APRSSection.visibleSections.first { $0.rawValue.caseInsensitiveCompare(raw) == .orderedSame } ?? .map
     }
 }
 
