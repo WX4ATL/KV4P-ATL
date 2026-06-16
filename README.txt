@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.2.3.
+Current shared development version: 0.2.4.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -47,10 +47,14 @@ How to run:
    Open web-flasher/kv4p-ble-flasher.html in Chrome, Edge, Brave, or another Chromium browser.
    The generated HTML is self-contained and embeds the latest KV4P/ATL BLE firmware binary.
 
-8. Create a public source release package:
+8. Run the experimental browser auto-reset diagnostic:
+   Open web-flasher/kv4p-auto-reset-diagnostic.html in Chrome, Edge, Brave, or another Chromium browser.
+   Select the KV4P HT CP2102 serial port, run the sequence matrix, and review the downloaded JSON log.
+
+9. Create a public source release package:
    tools/make_public_release.sh
 
-9. Build and install on a physical iPhone after provisioning is available:
+10. Build and install on a physical iPhone after provisioning is available:
    Open kv4patl.xcodeproj in Xcode, select your Apple Development team, select your connected iPhone as the run destination, and use Product > Run.
    For command-line installs, get your own device identifier with xcrun devicectl list devices and keep personal device names and identifiers out of committed files.
 
@@ -62,9 +66,10 @@ Notes:
 - The BLE transport uses Nordic UART-compatible UUIDs and carries the KV4P 2.0 KISS stream.
 - Direct arbitrary USB serial access from a public iPhone app is not available; USB-C is treated as power-only for this implementation path.
 - The web flasher is generated as one self-contained HTML file with ESP Web Tools, the KV4P glyph, manifest data, and the v17 BLE firmware image embedded. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source and regenerates the HTML so future releases include the latest binary. If Chromium cannot initialize the ESP32, use the manual BOOT flow documented in `web-flasher/README.txt`.
+- Version 0.2.4 adds a separate experimental auto-reset diagnostic page that tests Web Serial DTR/RTS sequences without flashing firmware and downloads a JSON log for comparing boot-mode evidence.
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: simulator build/test passed, BLE firmware esp32dev-release build passed, and the physical KV4P HT was flashed/verified on 2026-06-15 for shared version 0.2.3.
+- Current source-build status: simulator build/test passed, BLE firmware esp32dev-release build passed, and the physical KV4P HT was flashed/verified on 2026-06-15 for shared version 0.2.3. The 0.2.4 source change adds the browser auto-reset diagnostic without changing the flashed firmware image.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.

@@ -37,3 +37,17 @@ tested KV4P HT, native command-line esptool can auto-reset the board, but
 Chromium/Web Serial did not consistently enter ESP32 download mode. For that
 reason the public HTML documents the manual BOOT path instead of promising
 automatic reset.
+
+Experimental auto-reset diagnostic:
+1. Open `kv4p-auto-reset-diagnostic.html` directly in Chrome, Edge, Brave, or
+   another Chromium browser. A local web server is optional, not required.
+
+2. Select the KV4P HT CP2102 serial port and run the sequence matrix. The page
+   does not flash or write firmware. It only toggles DTR/RTS, reads the ESP32
+   boot banner at 115200 baud, and classifies whether each reset sequence
+   reached UART download mode.
+
+3. After the run, save the downloaded JSON log. A successful browser auto-boot
+   candidate should show `boot:0x3`, `DOWNLOAD_BOOT`, or similar download-mode
+   evidence. If every tested sequence reports `boot:0x13 (SPI_FAST_FLASH_BOOT)`
+   or no boot banner, keep using the manual BOOT flow for the public flasher.

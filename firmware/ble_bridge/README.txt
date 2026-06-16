@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.3.
+Current shared development version: 0.2.4.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -128,6 +128,12 @@ Build and flasher package
    board configuration storage remains compatible.
 4. Flash with the generated self-contained web flasher:
    Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
+
+5. Test browser auto-reset behavior without flashing:
+   Open web-flasher/kv4p-auto-reset-diagnostic.html directly in Chromium,
+   select the CP2102 serial port, and run the DTR/RTS sequence matrix. The
+   downloaded JSON log is the evidence to use before changing the public
+   flasher's manual-BOOT behavior.
    Public firmware releases should attach this HTML file; it embeds the latest
    KV4P/ATL BLE firmware binary and does not require the firmware folder. If
    Chromium cannot initialize the ESP32, hold BOOT while clicking Install and
