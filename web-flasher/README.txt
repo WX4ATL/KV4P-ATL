@@ -45,7 +45,8 @@ Experimental auto-reset diagnostic:
 2. Select the KV4P HT CP2102 serial port and run the sequence matrix. The page
    does not flash or write firmware. It only toggles DTR/RTS, reads the ESP32
    boot banner at 115200 baud, and classifies whether each reset sequence
-   reached UART download mode.
+   reached UART download mode. Version 0.2.5 and later automatically close the
+   serial port after each run/reset so native flashing tools can reopen it.
 
 3. After the run, save the downloaded JSON log. A successful browser auto-boot
    candidate should show `boot:0x3`, `DOWNLOAD_BOOT`, or similar download-mode

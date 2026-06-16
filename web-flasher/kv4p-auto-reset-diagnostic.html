@@ -346,7 +346,8 @@ a diagnostic log so the correct browser reset sequence can be identified.
               The diagnostic opens the serial port at 115200 baud, tries each
               DTR/RTS sequence, reads the boot banner, and classifies the result.
               A winning sequence should show <code>boot:0x3</code> or
-              <code>DOWNLOAD_BOOT</code>.
+              <code>DOWNLOAD_BOOT</code>. The port is closed automatically after
+              each run so native flashing tools can use it afterward.
             </p>
           </div>
 
@@ -849,7 +850,7 @@ a diagnostic log so the correct browser reset sequence can be identified.
       const info = currentPort.getInfo ? currentPort.getInfo() : {};
       const log = {
         tool: "KV4P/ATL ESP32 auto-reset diagnostic",
-        toolVersion: "0.2.4",
+        toolVersion: "0.2.5",
         warning: "This diagnostic toggles DTR/RTS and reads serial output only. It does not flash firmware.",
         startedAt: runStarted,
         finishedAt: null,
@@ -903,11 +904,15 @@ a diagnostic log so the correct browser reset sequence can be identified.
         setStatus(`Diagnostic failed: ${error.message}`, "bad");
         appendLog(`Diagnostic failed: ${error.message}`);
       } finally {
+        if (currentPort) {
+          await closePort(currentPort);
+          appendLog("Serial port closed.");
+        }
         log.finishedAt = isoNow();
         lastLog = log;
         renderResults(log);
         els.downloadLogButton.disabled = false;
-        els.normalResetButton.disabled = false;
+        els.normalResetButton.disabled = Boolean(!currentPort);
         els.runButton.disabled = false;
         downloadObject(log);
       }
@@ -922,11 +927,16 @@ a diagnostic log so the correct browser reset sequence can be identified.
       try {
         await openPort(currentPort);
         await applySequence(currentPort, normalResetSteps, []);
+        await closePort(currentPort);
         setStatus("Normal reset sent. The radio should reboot into app firmware.", "good");
-        appendLog("Manual normal reset sent.");
+        appendLog("Manual normal reset sent and serial port closed.");
       } catch (error) {
         setStatus(`Reset failed: ${error.message}`, "bad");
         appendLog(`Reset failed: ${error.message}`);
+        try {
+          await closePort(currentPort);
+        } catch (_) {
+        }
       } finally {
         els.normalResetButton.disabled = false;
       }
@@ -946,6 +956,11 @@ a diagnostic log so the correct browser reset sequence can be identified.
       if (lastLog) downloadObject(lastLog);
     });
     els.clearButton.addEventListener("click", clearResults);
+    window.addEventListener("beforeunload", () => {
+      if (currentPort && (currentPort.readable || currentPort.writable)) {
+        currentPort.close().catch(() => {});
+      }
+    });
 
     if (!("serial" in navigator)) {
       setStatus("Web Serial is not available here. Open this page in desktop Chrome, Edge, or Brave.", "bad");
