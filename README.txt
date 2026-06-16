@@ -44,8 +44,8 @@ How to run:
    firmware/ble_bridge/build_ble_release.sh --update
 
 7. Run the local web flasher:
-   python3 -m http.server 8766 --directory web-flasher
-   Open http://127.0.0.1:8766/kv4p-ble-flasher.html in Chrome, Edge, Brave, or another Chromium browser.
+   Open web-flasher/kv4p-ble-flasher.html in Chrome, Edge, Brave, or another Chromium browser.
+   The generated HTML is self-contained and embeds the latest KV4P/ATL BLE firmware binary.
 
 8. Create a public source release package:
    tools/make_public_release.sh
@@ -61,7 +61,7 @@ Provisioning notes:
 Notes:
 - The BLE transport uses Nordic UART-compatible UUIDs and carries the KV4P 2.0 KISS stream.
 - Direct arbitrary USB serial access from a public iPhone app is not available; USB-C is treated as power-only for this implementation path.
-- The web flasher includes a generated v17 BLE firmware image and manifest. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source so future upstream releases do not require a hand-maintained fork.
+- The web flasher is generated as one self-contained HTML file with ESP Web Tools, the KV4P glyph, manifest data, and the v17 BLE firmware image embedded. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source and regenerates the HTML so future releases include the latest binary. The generated manifest skips the optional Improv Serial probe and uses Web Serial DTR/RTS bootloader entry/reset, so normal KV4P HT flashing should not require BOOT/RST button presses.
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.

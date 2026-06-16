@@ -122,12 +122,17 @@ Build and flasher package
    merges bootloader/partition/app images, and writes:
    web-flasher/firmware/kv4p-ht-firmware-ble-v<version>.bin
    web-flasher/firmware/manifest-ble-latest.json
+   web-flasher/kv4p-ble-flasher.html
 3. The BLE build uses partitions_ble.csv because the stock OTA-sized app slot
    is too small once ESP32 BLE support is linked. NVS stays at 0x9000 so KV4P
    board configuration storage remains compatible.
-4. Flash with the local web flasher:
-   python3 -m http.server 8766 --directory web-flasher
-   Open http://127.0.0.1:8766/kv4p-ble-flasher.html in Chromium.
+4. Flash with the generated self-contained web flasher:
+   Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
+   Public firmware releases should attach this HTML file; it embeds the latest
+   KV4P/ATL BLE firmware binary and does not require the firmware folder. The
+   generated manifest disables the optional Improv Serial probe and the page
+   relies on Web Serial DTR/RTS control lines for automatic ESP32 bootloader
+   entry and post-flash reset, matching the command-line flashing path.
 
 Power and CPU profiling
 See POWER_PROFILING_NOTES.txt for the 0.2.0 USB diagnostic findings, including

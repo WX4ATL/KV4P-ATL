@@ -110,6 +110,11 @@ cat > "${WEB_FIRMWARE_DIR}/manifest-ble-v${VERSION}.json" <<JSON
 JSON
 
 cp "${WEB_FIRMWARE_DIR}/manifest-ble-v${VERSION}.json" "${WEB_FIRMWARE_DIR}/manifest-ble-latest.json"
+"${PIO_PYTHON}" "${PROJECT_ROOT}/web-flasher/build_embedded_flasher.py" \
+  --manifest "${WEB_FIRMWARE_DIR}/manifest-ble-latest.json" \
+  --firmware "${OUT_BIN}" \
+  --output "${PROJECT_ROOT}/web-flasher/kv4p-ble-flasher.html"
 shasum -a 256 "${OUT_BIN}"
 echo "Built ${OUT_BIN}"
 echo "Manifest: ${WEB_FIRMWARE_DIR}/manifest-ble-latest.json"
+echo "Self-contained flasher: ${PROJECT_ROOT}/web-flasher/kv4p-ble-flasher.html"
