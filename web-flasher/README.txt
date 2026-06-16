@@ -17,14 +17,10 @@ How to run locally:
 1. Open `kv4p-ble-flasher.html` directly in Chrome, Edge, Brave, or another
    Chromium browser. A local web server is optional, not required.
 
-2. Connect the KV4P HT ESP32 by USB and press "Connect and flash". The
-   generated page skips the optional Improv Serial probe and lets esptool-js
-   enter the ESP32 bootloader with Web Serial DTR/RTS control lines. The
-   embedded esptool-js reset sequence is patched to try a macOS esptool-style
-   combined DTR/RTS reset before the classic fallback timing, so the BOOT/RST
-   buttons should not be pressed on a normal KV4P HT USB bridge.
-   If initialization fails, close other serial tools, unplug/replug USB, and
-   try again.
+2. Connect the KV4P HT ESP32 by USB and press "Connect and flash". If the
+   browser reports "Failed to initialize", hold BOOT while clicking Install,
+   release BOOT once writing starts, and do not press RST unless the browser
+   asks you to reconnect. Close any serial monitor before flashing.
 
 3. After flashing and rebooting, use "Scan for KV4P BLE" to confirm the ESP32
    advertises the Nordic UART-compatible service.
@@ -36,9 +32,8 @@ The static browser page does not compile C++ firmware in the browser. The
 rebuild script is the repeatable path that pulls or uses upstream source,
 applies only the BLE overlay, regenerates the manifest/bin files, and rebuilds
 the self-contained `kv4p-ble-flasher.html` with the newest firmware embedded.
-Every generated manifest sets `new_install_improv_wait_time` to `0`, keeping
-the browser install path focused on the same DTR/RTS bootloader entry used by
-command-line esptool/PlatformIO flashes. The generator also patches the bundled
-ESP Web Tools/esptool-js reset command parser so it can issue combined DTR/RTS
-line-state changes through Web Serial, matching the native esptool reset path
-that succeeded on `/dev/cu.usbserial-0001` without pressing BOOT/RST.
+The browser flasher keeps ESP Web Tools' stock Web Serial behavior. On the
+tested KV4P HT, native command-line esptool can auto-reset the board, but
+Chromium/Web Serial did not consistently enter ESP32 download mode. For that
+reason the public HTML documents the manual BOOT path instead of promising
+automatic reset.

@@ -282,7 +282,7 @@ __ESP_WEB_TOOLS_MODULE__
       <section class="intro">
         <h1>KV4P HT BLE Flasher</h1>
         <p>This single HTML file flashes a KV4P HT ESP32 with KV4P/ATL BLE bridge firmware. The firmware binary and flashing logic are embedded, so no separate manifest, firmware folder, or web server is required for the KV4P/ATL firmware option.</p>
-        <p class="small">Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS. Connect the radio ESP32 by USB, then flash the embedded package. The installer automatically enters and leaves the ESP32 bootloader over USB serial DTR/RTS, using the same combined-line reset sequence that macOS esptool tries before the classic fallback, so BOOT/RST should not be pressed on a normal KV4P HT USB bridge.</p>
+        <p class="small">Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS. Connect the radio ESP32 by USB, then flash the embedded package. If initialization fails, hold BOOT while clicking Install, release BOOT once writing starts, and do not press RST unless the browser asks you to reconnect.</p>
       </section>
       <div class="photo" aria-hidden="true">
         <img src="__KV4P_RADIO_GLYPH_DATA_URI__" alt="">
@@ -320,7 +320,7 @@ __ESP_WEB_TOOLS_MODULE__
             <button id="activateButton" slot="activate" disabled>Connect and flash</button>
           </esp-web-install-button>
         </div>
-        <p class="small">This writes a merged ESP32 image at offset <code>0x0</code>, matching the generated release manifest. Existing KV4P board configuration storage is preserved by the firmware layout. If initialization fails, close other serial tools and reconnect USB; the page already performs the automatic reset sequence.</p>
+        <p class="small">This writes a merged ESP32 image at offset <code>0x0</code>, matching the generated release manifest. Existing KV4P board configuration storage is preserved by the firmware layout. Close any serial monitor before flashing.</p>
       </div>
 
       <aside class="panel stack">
@@ -391,7 +391,6 @@ __ESP_WEB_TOOLS_MODULE__
         name: "KV4P/ATL BLE bridge firmware",
         version: embeddedFirmware.version,
         new_install_prompt_erase: false,
-        new_install_improv_wait_time: 0,
         builds: [
           {
             chipFamily: "ESP32",

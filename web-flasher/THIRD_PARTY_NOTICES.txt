@@ -19,9 +19,7 @@ Bundled version: 10.0.1
 License: Apache License 2.0.
 Use: browser-based ESP32 firmware flashing through Web Serial. A readable copy
 of Apache-2.0 is included at LICENSES/Apache-2.0.txt. The release generator
-embeds this bundle locally and patches one user-facing initialization error
-message so KV4P/ATL users are directed to the automatic DTR/RTS reset path
-instead of pressing BOOT/RST.
+embeds this bundle locally so the flasher can run without a CDN dependency.
 
 Google Lit and related bundled web components
 Source: bundled inside ESP Web Tools dist/esp-web-tools.min.js.

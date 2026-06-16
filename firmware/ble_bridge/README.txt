@@ -129,12 +129,11 @@ Build and flasher package
 4. Flash with the generated self-contained web flasher:
    Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
    Public firmware releases should attach this HTML file; it embeds the latest
-   KV4P/ATL BLE firmware binary and does not require the firmware folder. The
-   generated manifest disables the optional Improv Serial probe and the page
-   relies on Web Serial DTR/RTS control lines for automatic ESP32 bootloader
-   entry and post-flash reset. The embedded browser esptool reset parser is
-   patched to support combined DTR/RTS line-state changes, matching the native
-   macOS esptool reset strategy before falling back to classic timing.
+   KV4P/ATL BLE firmware binary and does not require the firmware folder. If
+   Chromium cannot initialize the ESP32, hold BOOT while clicking Install and
+   release BOOT after writing starts. Native esptool auto-reset may work on the
+   same board, but Chromium/Web Serial did not reliably reproduce that reset
+   path during testing.
 
 Power and CPU profiling
 See POWER_PROFILING_NOTES.txt for the 0.2.0 USB diagnostic findings, including
