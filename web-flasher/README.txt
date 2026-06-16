@@ -19,8 +19,10 @@ How to run locally:
 
 2. Connect the KV4P HT ESP32 by USB and press "Connect and flash". The
    generated page skips the optional Improv Serial probe and lets esptool-js
-   enter the ESP32 bootloader with Web Serial DTR/RTS control lines, so the
-   BOOT/RST buttons should not be pressed on a normal KV4P HT USB bridge.
+   enter the ESP32 bootloader with Web Serial DTR/RTS control lines. The
+   embedded esptool-js reset sequence is patched to try a macOS esptool-style
+   combined DTR/RTS reset before the classic fallback timing, so the BOOT/RST
+   buttons should not be pressed on a normal KV4P HT USB bridge.
    If initialization fails, close other serial tools, unplug/replug USB, and
    try again.
 
@@ -36,4 +38,7 @@ applies only the BLE overlay, regenerates the manifest/bin files, and rebuilds
 the self-contained `kv4p-ble-flasher.html` with the newest firmware embedded.
 Every generated manifest sets `new_install_improv_wait_time` to `0`, keeping
 the browser install path focused on the same DTR/RTS bootloader entry used by
-command-line esptool/PlatformIO flashes.
+command-line esptool/PlatformIO flashes. The generator also patches the bundled
+ESP Web Tools/esptool-js reset command parser so it can issue combined DTR/RTS
+line-state changes through Web Serial, matching the native esptool reset path
+that succeeded on `/dev/cu.usbserial-0001` without pressing BOOT/RST.

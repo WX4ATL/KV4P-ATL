@@ -282,7 +282,7 @@ __ESP_WEB_TOOLS_MODULE__
       <section class="intro">
         <h1>KV4P HT BLE Flasher</h1>
         <p>This single HTML file flashes a KV4P HT ESP32 with KV4P/ATL BLE bridge firmware. The firmware binary and flashing logic are embedded, so no separate manifest, firmware folder, or web server is required for the KV4P/ATL firmware option.</p>
-        <p class="small">Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS. Connect the radio ESP32 by USB, then flash the embedded package. The installer automatically enters and leaves the ESP32 bootloader over USB serial DTR/RTS, matching the command-line flasher path, so BOOT/RST should not be pressed on a normal KV4P HT USB bridge.</p>
+        <p class="small">Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS. Connect the radio ESP32 by USB, then flash the embedded package. The installer automatically enters and leaves the ESP32 bootloader over USB serial DTR/RTS, using the same combined-line reset sequence that macOS esptool tries before the classic fallback, so BOOT/RST should not be pressed on a normal KV4P HT USB bridge.</p>
       </section>
       <div class="photo" aria-hidden="true">
         <img src="__KV4P_RADIO_GLYPH_DATA_URI__" alt="">

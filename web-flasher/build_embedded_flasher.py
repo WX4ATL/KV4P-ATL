@@ -14,6 +14,14 @@ from pathlib import Path
 ESP_WEB_TOOLS_TEXT_PATCHES = {
     "Failed to initialize. Try resetting your device or holding the BOOT button while clicking INSTALL.":
         "Failed to initialize. Close any serial monitor, unplug/replug USB, then try again. This flasher already attempts automatic DTR/RTS bootloader entry.",
+    'const i={D:async e=>await t.setDTR(e),R:async e=>await t.setRTS(e),W:async t=>await ya(t)};':
+        'const i={D:async e=>await t.setDTR(e),R:async e=>await t.setRTS(e),U:async e=>{const[i,r]=e.split(",");await t.device.setSignals({dataTerminalReady:"1"===i,requestToSend:"1"===r}),t._DTR_state="1"===i},W:async t=>await ya(t)};',
+    'const t=function(t){const e=["D","R","W"],i=t.split("|");for(const t of i){const i=t[0],r=t.slice(1);if(!e.includes(i))return!1;if("D"===i||"R"===i){if("0"!==r&&"1"!==r)return!1}else if("W"===i){const t=parseInt(r);if(isNaN(t)||t<=0)return!1}}return!0}(e);':
+        'const t=function(t){const e=["D","R","W","U"],i=t.split("|");for(const t of i){const i=t[0],r=t.slice(1);if(!e.includes(i))return!1;if("D"===i||"R"===i){if("0"!==r&&"1"!==r)return!1}else if("U"===i){if(!/^[01],[01]$/.test(r))return!1}else if("W"===i){const t=parseInt(r);if(isNaN(t)||t<=0)return!1}}return!0}(e);',
+    '"W"===e?await i.W(Number(r)):"D"!==e&&"R"!==e||await i[e]("1"===r)':
+        '"W"===e?await i.W(Number(r)):"U"===e?await i.U(r):"D"!==e&&"R"!==e||await i[e]("1"===r)',
+    'const t=e?"D0|R1|W100|W2000|D1|R0|W50|D0":"D0|R1|W100|D1|R0|W50|D0";':
+        'const t=e?"U0,0|U1,1|U0,1|W100|U1,0|W550|U0,0|D0":"U0,0|U1,1|U0,1|W100|U1,0|W50|U0,0|D0";',
 }
 
 

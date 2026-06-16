@@ -132,7 +132,9 @@ Build and flasher package
    KV4P/ATL BLE firmware binary and does not require the firmware folder. The
    generated manifest disables the optional Improv Serial probe and the page
    relies on Web Serial DTR/RTS control lines for automatic ESP32 bootloader
-   entry and post-flash reset, matching the command-line flashing path.
+   entry and post-flash reset. The embedded browser esptool reset parser is
+   patched to support combined DTR/RTS line-state changes, matching the native
+   macOS esptool reset strategy before falling back to classic timing.
 
 Power and CPU profiling
 See POWER_PROFILING_NOTES.txt for the 0.2.0 USB diagnostic findings, including
