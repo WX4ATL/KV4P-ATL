@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.2.14.
+Current shared development version: 0.2.15.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -66,7 +66,8 @@ Notes:
 - The BLE transport uses Nordic UART-compatible UUIDs and carries the KV4P 2.0 KISS stream.
 - Direct arbitrary USB serial access from a public iPhone app is not available; USB-C is treated as power-only for this implementation path.
 - The web flasher is generated as one self-contained HTML file with ESP Web Tools, the KV4P glyph, manifest data, and the v17 BLE firmware image embedded. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source and regenerates the HTML so future releases include the latest binary. The Chromium flasher intentionally uses the manual BOOT flow documented in `web-flasher/README.txt`.
-- Version 0.2.14 refines the manual BOOT timing in the web flasher. The user still holds BOOT through the serial picker, install confirmation, and ESP Web Tools initialization, but the green release banner now appears when the ESP Web Tools install box shows Erasing or visible Installing progress, instead of asking the user to hold BOOT for the whole flash.
+- Version 0.2.15 latches the web flasher's green BOOT-release banner. Once Erasing or visible Installing progress has appeared, the banner stays green through later ESP Web Tools text changes instead of briefly falling back to amber.
+- Version 0.2.14 refines the manual BOOT timing in the web flasher. The user still holds BOOT through the serial picker, install confirmation, and ESP Web Tools initialization, but the green release banner appears when the ESP Web Tools install box shows Erasing or visible Installing progress, instead of asking the user to hold BOOT for the whole flash.
 - Version 0.2.13 makes the web flasher's manual BOOT sequence the primary path. The top of the page is now step-by-step flashing instructions, the flash button is labeled for manual BOOT flashing, a pre-flash dialog explains how to enter the serial picker, and an always-on-top banner changes to "You may now release the BOOT button" during the install flow.
 - Version 0.2.12 replaces the removed toggle-driven APRS weak-signal path with an automatic firmware Bell 202 packet-candidate detector. The AFSK tap now measures 1200/2200 Hz tone-band energy against a rolling static floor, holds a candidate window when the step exceeds 12 dB, and uses that to arm adaptive AFSK gain/clipping protection while continuing to feed standard AX.25 KISS DATA frames. The iOS app parses and displays Bell 202 step/floor/tone/candidate telemetry in Settings > Debug.
 - Version 0.2.11 removes the experimental RX noise-reduction controls from the app and removes the related playback spectral-DSP path, reset action, Settings.bundle references, and sources text. Firmware was checked and has no matching RX noise-reduction host setting to remove.
@@ -76,6 +77,6 @@ Notes:
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: simulator build/run passed, protocol unit tests passed 26/26, plist validation passed, and BLE firmware esp32dev-release package build passed on 2026-06-17 for shared version 0.2.14. The generated self-contained web flasher embeds firmware manifest version `0.2.14-fw17-ble` with firmware SHA-256 `cea693459c96fd42389aca1487b945d72ee2a28a12b62d888249b7f59950f06c`.
+- Current source-build status: simulator build/run passed, protocol unit tests passed 26/26, plist validation passed, and BLE firmware esp32dev-release package build passed on 2026-06-17 for shared version 0.2.15. The generated self-contained web flasher embeds firmware manifest version `0.2.15-fw17-ble` with firmware SHA-256 `cea693459c96fd42389aca1487b945d72ee2a28a12b62d888249b7f59950f06c`.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.

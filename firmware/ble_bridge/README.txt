@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.14.
+Current shared development version: 0.2.15.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -108,6 +108,12 @@ audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
 APRS Bell 202 receive note
+0.2.15 keeps the firmware behavior and binary payload aligned with 0.2.12 while
+regenerating the release manifest/flasher for the shared project version. The
+0.2.15 functional change is in the web flasher: once Erasing or visible
+Installing progress has appeared, the top BOOT-release banner latches green and
+does not fall back to amber during later ESP Web Tools modal text transitions.
+
 0.2.14 keeps the firmware behavior and binary payload aligned with 0.2.12 while
 regenerating the release manifest/flasher for the shared project version. The
 0.2.14 functional change is in the web flasher instructions: the BOOT button is

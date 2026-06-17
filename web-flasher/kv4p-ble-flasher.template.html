@@ -507,6 +507,7 @@ __ESP_WEB_TOOLS_MODULE__
     let manualBootConfirmed = false;
     let bootReleaseState = "";
     let bootReleaseWatch = null;
+    let bootReleaseLatched = false;
 
     function setStatus(text, tone = "") {
       flashStatus.textContent = text;
@@ -586,6 +587,7 @@ __ESP_WEB_TOOLS_MODULE__
 
     function hideBootReleaseOverlay() {
       bootReleaseState = "";
+      bootReleaseLatched = false;
       bootReleaseOverlay.hidden = true;
     }
 
@@ -627,12 +629,20 @@ __ESP_WEB_TOOLS_MODULE__
       }
 
       if (installerText.includes("failed") || installerText.includes("error")) {
+        bootReleaseLatched = false;
         setBootReleaseOverlay("error", "Initialization failed", "Release BOOT, tap RST once or reconnect USB, then retry from the first BOOT step.");
         setStatus("Flash did not initialize. Release BOOT, tap RST or reconnect USB, then retry.", "warn");
         return;
       }
 
+      if (bootReleaseLatched) {
+        setBootReleaseOverlay("release", "You may now release the BOOT button", "The ESP32 bootloader is already running. BOOT can stay released while flashing continues.");
+        setStatus("You may now release the BOOT button. Keep the page visible until flashing finishes.", "good");
+        return;
+      }
+
       if (installerText.includes("erasing") || installerText.includes("writing progress") || installingWithProgress) {
+        bootReleaseLatched = true;
         setBootReleaseOverlay("release", "You may now release the BOOT button", "Erasing or install progress is visible, so the ESP32 bootloader is ready. Leave the page visible until flashing finishes.");
         setStatus("You may now release the BOOT button. Erasing or install progress is visible.", "good");
         return;
