@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.6.
+Current shared development version: 0.2.5.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -106,14 +106,6 @@ BLE central is connected. A previous squelch-gated suppression approach was
 rejected after physical open-squelch testing because it could mute receive
 audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
-
-APRS RX sensitivity note
-0.2.6 keeps the APRS demodulator active before the speaker mute stage, but feeds
-it post-DC, pre-speaker-gain samples through a light AGC/limiter and tells the
-demodulator the actual ADC sample rate used by the ESP32 input stream. This
-avoids using the boosted voice-audio path for Bell 202 packet recovery, where
-clipping or a 48 kHz versus 48.96 kHz sample-rate mismatch can reduce weak
-packet decode reliability even when the packet is audible by ear.
 
 Test order
 1. Build firmware with BLE only on an ESP32 dev board and run a loopback test
