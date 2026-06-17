@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 @preconcurrency import AVFoundation
+import Accelerate
 import Foundation
 
 enum KV4PMicrophonePermissionState: String {
@@ -100,6 +101,19 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private var configuredSessionKind: AudioSessionKind?
     private var playbackGain: Float = 1.55
     private var captureGain: Float = 1.35
+    private var rxNoiseReductionEnabled = false
+    private var rxNoiseReductionStrength = "Balanced"
+    private var rxNoiseFloorRMS: Float = 0.02
+    private var rxNoiseReductionSmoothedGain: Float = 1.0
+    private let rxNoiseFFTSetup = vDSP_create_fftsetup(KV4PAudioEngine.noiseReductionFFTLog2N, FFTRadix(kFFTRadix2))
+    private var rxNoisePowerProfile = [Float](repeating: 0.0004, count: KV4PAudioEngine.noiseReductionBinCount)
+    private var rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: KV4PAudioEngine.noiseReductionBinCount)
+    private var rxNoiseProfileFrameCount = 0
+    private var rxSoftwareSquelchHangFrames = 0
+    private var rxSpeakerMutedFrames = 0
+    private var rxSoftwareSquelchMutedFrames = 0
+    private var rxNoiseReducedFrames = 0
+    private var rxProcessingSummary = "speaker open"
 
     init(codec: VoiceCodec = IMAADPCMCodec()) {
         self.codec = codec
@@ -117,6 +131,9 @@ final class KV4PAudioEngine: @unchecked Sendable {
     deinit {
         if let routeChangeObserver {
             NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
+        if let rxNoiseFFTSetup {
+            vDSP_destroy_fftsetup(rxNoiseFFTSetup)
         }
     }
 
@@ -332,6 +349,29 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
+    func updateReceiveProcessing(noiseReductionEnabled: Bool, strength: String) {
+        syncOnWorkQueue {
+            rxNoiseReductionEnabled = noiseReductionEnabled
+            rxNoiseReductionStrength = strength
+            if !noiseReductionEnabled {
+                rxNoiseReductionSmoothedGain = 1.0
+                rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
+            }
+            logAudio("receive speaker processing noiseReduction=\(noiseReductionEnabled) strength=\(strength)")
+        }
+    }
+
+    func resetReceiveNoiseProfile() {
+        syncOnWorkQueue {
+            rxNoisePowerProfile = [Float](repeating: max(rxNoiseFloorRMS * rxNoiseFloorRMS, 0.0004), count: Self.noiseReductionBinCount)
+            rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
+            rxNoiseProfileFrameCount = 0
+            rxNoiseReductionSmoothedGain = 1.0
+            rxProcessingSummary = "noise profile reset; listening for static"
+            logAudio("receive noise profile reset")
+        }
+    }
+
     func resetCapturePathAfterFailure() {
         syncOnWorkQueue {
             teardownInputTap()
@@ -369,18 +409,31 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
-    func playReceivedFrame(_ frame: Data) throws {
+    func playReceivedFrame(_ frame: Data, speakerMuted: Bool = false, softwareSquelchLevel: Int = 0) throws {
         try syncOnWorkQueue {
-            _ = try playReceivedFrameOnWorkQueue(frame)
+            _ = try playReceivedFrameOnWorkQueue(
+                frame,
+                speakerMuted: speakerMuted,
+                softwareSquelchLevel: softwareSquelchLevel
+            )
         }
     }
 
-    func playReceivedFrameAsync(_ frame: Data, completion: (@Sendable (Bool) -> Void)? = nil) {
+    func playReceivedFrameAsync(
+        _ frame: Data,
+        speakerMuted: Bool = false,
+        softwareSquelchLevel: Int = 0,
+        completion: (@Sendable (Bool) -> Void)? = nil
+    ) {
         workQueue.async { [weak self] in
             guard let self else { return }
             let playbackIsReady: Bool
             do {
-                playbackIsReady = try self.playReceivedFrameOnWorkQueue(frame)
+                playbackIsReady = try self.playReceivedFrameOnWorkQueue(
+                    frame,
+                    speakerMuted: speakerMuted,
+                    softwareSquelchLevel: softwareSquelchLevel
+                )
             } catch {
                 self.lastPlaybackError = "\(error.localizedDescription), frameBytes=\(frame.count)"
                 completion?(false)
@@ -390,14 +443,27 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
-    private func playReceivedFrameOnWorkQueue(_ frame: Data) throws -> Bool {
+    private func playReceivedFrameOnWorkQueue(
+        _ frame: Data,
+        speakerMuted: Bool,
+        softwareSquelchLevel: Int
+    ) throws -> Bool {
         let gapMS = recordPlaybackFrameArrival()
-        try enqueueConcealmentForArrivalGapIfNeeded(gapMS)
         let samples = try codec.decode(frame)
-        lastDecodedPeak = peakLevel(samples)
+        let processed = processReceivedSpeakerSamples(
+            samples,
+            speakerMuted: speakerMuted,
+            softwareSquelchLevel: softwareSquelchLevel
+        )
+        lastDecodedPeak = processed.peak
         lastPlaybackError = nil
         consecutiveConcealmentBursts = 0
-        try enqueuePlaybackSamples(samples)
+        guard processed.shouldPlay else {
+            logAudioProgressIfNeeded(reason: processed.reason)
+            return false
+        }
+        try enqueueConcealmentForArrivalGapIfNeeded(gapMS)
+        try enqueuePlaybackSamples(processed.samples)
         logAudioProgressIfNeeded(reason: "rx-frame")
         return playbackOutputReady()
     }
@@ -419,7 +485,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         let queuedLatencyMS = queued * Self.frameDurationMS
         let catchUpFrames = (latencyCatchUpDroppedSamples + KV4PVoice.engineFrameSize - 1) / KV4PVoice.engineFrameSize
         let renderStats = playbackRenderStats()
-        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), rate \(String(format: "%.3f", playbackRate))x, late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), out \(playbackOutputMode.rawValue), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), \(compactRouteSummary())"
+        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), rate \(String(format: "%.3f", playbackRate))x, late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), out \(playbackOutputMode.rawValue), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), proc \(rxProcessingSummary), \(compactRouteSummary())"
         if let lastPlaybackGraphRecoveryMessage {
             summary += ", graph \(playbackGraphRecoveryAttempts): \(lastPlaybackGraphRecoveryMessage)"
         }
@@ -619,6 +685,304 @@ final class KV4PAudioEngine: @unchecked Sendable {
             let samples = try codec.decodePLC()
             try enqueuePlaybackSamples(samples, allowLowWatermarkRefill: false)
             concealedPlaybackFrames += 1
+        }
+    }
+
+    private func processReceivedSpeakerSamples(
+        _ samples: [Float],
+        speakerMuted: Bool,
+        softwareSquelchLevel: Int
+    ) -> RXSpeakerProcessingResult {
+        let rms = rmsLevel(samples)
+        let peak = peakLevel(samples)
+        let squelchLevel = max(0, min(100, softwareSquelchLevel))
+        let squelchOpen = speakerMuted ? false : softwareSquelchOpen(
+            rms: rms,
+            peak: peak,
+            squelchLevel: squelchLevel
+        )
+
+        let likelyNoiseOnly = speakerMuted
+            ? isLikelyNoiseOnly(rms: rms, peak: peak)
+            : (!squelchOpen || isLikelyNoiseOnly(rms: rms, peak: peak))
+        updateReceiveNoiseFloor(rms: rms, likelyNoiseOnly: likelyNoiseOnly)
+        updateReceiveNoiseSpectrum(samples, likelyNoiseOnly: likelyNoiseOnly)
+
+        if speakerMuted {
+            rxSpeakerMutedFrames += 1
+            rxProcessingSummary = "muted APRS \(rxSpeakerMutedFrames), rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS))"
+            return RXSpeakerProcessingResult(samples: samples, shouldPlay: false, peak: peak, reason: "rx-speaker-muted")
+        }
+
+        guard squelchOpen else {
+            rxSoftwareSquelchMutedFrames += 1
+            rxProcessingSummary = "squelch closed \(rxSoftwareSquelchMutedFrames), rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS))"
+            return RXSpeakerProcessingResult(samples: samples, shouldPlay: false, peak: peak, reason: "rx-software-squelch")
+        }
+
+        if rxNoiseReductionEnabled {
+            let reduced = applyReceiveNoiseReduction(to: samples, rms: rms)
+            rxNoiseReducedFrames += 1
+            rxProcessingSummary = "speaker open, NR \(rxNoiseReductionStrength), rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS)), gain \(formatPeak(rxNoiseReductionSmoothedGain))"
+            return RXSpeakerProcessingResult(samples: reduced, shouldPlay: true, peak: peak, reason: "rx-frame-noise-reduced")
+        }
+
+        rxProcessingSummary = "speaker open, rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS))"
+        return RXSpeakerProcessingResult(samples: samples, shouldPlay: true, peak: peak, reason: "rx-frame")
+    }
+
+    private func softwareSquelchOpen(rms: Float, peak: Float, squelchLevel: Int) -> Bool {
+        guard squelchLevel > 0 else {
+            rxSoftwareSquelchHangFrames = Self.softwareSquelchHangFrameCount
+            return true
+        }
+
+        let rmsThreshold = softwareSquelchRMSThreshold(for: squelchLevel)
+        let peakThreshold = max(rmsThreshold * 3.0, 0.09)
+        let signalDetected = rms >= rmsThreshold || peak >= peakThreshold
+        if signalDetected {
+            rxSoftwareSquelchHangFrames = Self.softwareSquelchHangFrameCount
+            return true
+        }
+
+        if rxSoftwareSquelchHangFrames > 0 {
+            rxSoftwareSquelchHangFrames -= 1
+            return true
+        }
+
+        return false
+    }
+
+    private func softwareSquelchRMSThreshold(for squelchLevel: Int) -> Float {
+        let normalized = Float(max(1, min(100, squelchLevel))) / 100.0
+        let baseline = max(rxNoiseFloorRMS, 0.018)
+        let dynamicThreshold = baseline * (1.55 + normalized * 2.25)
+        let absoluteThreshold = 0.018 + normalized * 0.05
+        return min(0.22, max(dynamicThreshold, absoluteThreshold))
+    }
+
+    private func isLikelyNoiseOnly(rms: Float, peak: Float) -> Bool {
+        let floor = max(rxNoiseFloorRMS, 0.004)
+        return rms <= floor * 1.35 && peak <= max(0.12, floor * 6.0)
+    }
+
+    private func updateReceiveNoiseFloor(rms: Float, likelyNoiseOnly: Bool) {
+        guard rms.isFinite, rms > 0 else { return }
+        let sample = min(max(rms, 0.001), 0.3)
+        let alpha: Float
+        if sample < rxNoiseFloorRMS {
+            alpha = 0.12
+        } else if likelyNoiseOnly {
+            alpha = 0.035
+        } else {
+            alpha = 0.003
+        }
+        rxNoiseFloorRMS = rxNoiseFloorRMS * (1.0 - alpha) + sample * alpha
+    }
+
+    private func applyReceiveNoiseReduction(to samples: [Float], rms: Float) -> [Float] {
+        guard !samples.isEmpty else { return samples }
+        guard let rxNoiseFFTSetup, rxNoiseProfileFrameCount >= Self.minimumNoiseProfileFrames else {
+            return samples
+        }
+
+        var padded = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
+        let copyCount = min(samples.count, padded.count)
+        padded.replaceSubrange(0..<copyCount, with: samples.prefix(copyCount))
+
+        var real = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
+        var imaginary = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
+        padded.withUnsafeBufferPointer { input in
+            input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexInput in
+                real.withUnsafeMutableBufferPointer { realBuffer in
+                    imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
+                        var split = DSPSplitComplex(
+                            realp: realBuffer.baseAddress!,
+                            imagp: imaginaryBuffer.baseAddress!
+                        )
+                        vDSP_ctoz(complexInput, 2, &split, 1, vDSP_Length(Self.noiseReductionFFTHalfSize))
+                        vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_FORWARD))
+                    }
+                }
+            }
+        }
+
+        let gains = spectralNoiseReductionGains(real: real, imaginary: imaginary)
+        if Self.noiseReductionFFTHalfSize > 1 {
+            for bin in 1..<Self.noiseReductionFFTHalfSize {
+                let gain = gains[bin]
+                real[bin] *= gain
+                imaginary[bin] *= gain
+            }
+        }
+        real[0] *= gains[0]
+        imaginary[0] *= gains[Self.noiseReductionFFTHalfSize]
+
+        var output = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
+        real.withUnsafeMutableBufferPointer { realBuffer in
+            imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
+                var split = DSPSplitComplex(
+                    realp: realBuffer.baseAddress!,
+                    imagp: imaginaryBuffer.baseAddress!
+                )
+                vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_INVERSE))
+                output.withUnsafeMutableBufferPointer { outputBuffer in
+                    outputBuffer.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexOutput in
+                        vDSP_ztoc(&split, 1, complexOutput, 2, vDSP_Length(Self.noiseReductionFFTHalfSize))
+                    }
+                }
+            }
+        }
+
+        var scale = Float(1.0 / Float(Self.noiseReductionFFTSize * 2))
+        vDSP_vsmul(output, 1, &scale, &output, 1, vDSP_Length(output.count))
+        rxNoiseReductionSmoothedGain = gains.reduce(Float(0), +) / Float(gains.count)
+        return Array(output.prefix(samples.count))
+    }
+
+    private func updateReceiveNoiseSpectrum(_ samples: [Float], likelyNoiseOnly: Bool) {
+        guard !samples.isEmpty else { return }
+        var padded = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
+        let copyCount = min(samples.count, padded.count)
+        padded.replaceSubrange(0..<copyCount, with: samples.prefix(copyCount))
+        guard let power = noiseSpectrumPower(for: padded) else { return }
+
+        let downwardAlpha: Float = 0.18
+        let upwardNoiseAlpha: Float = rxNoiseProfileFrameCount < Self.minimumNoiseProfileFrames ? 0.22 : 0.025
+        let upwardSignalAlpha: Float = 0.001
+        for bin in 0..<Self.noiseReductionBinCount {
+            let observed = max(power[bin], Self.minimumSpectralPower)
+            let current = rxNoisePowerProfile[bin]
+            let alpha: Float
+            if observed < current {
+                alpha = downwardAlpha
+            } else {
+                alpha = likelyNoiseOnly ? upwardNoiseAlpha : upwardSignalAlpha
+            }
+            rxNoisePowerProfile[bin] = current * (1.0 - alpha) + observed * alpha
+        }
+        if likelyNoiseOnly {
+            rxNoiseProfileFrameCount = min(Self.maximumNoiseProfileFrameCount, rxNoiseProfileFrameCount + 1)
+        }
+    }
+
+    private func noiseSpectrumPower(for paddedSamples: [Float]) -> [Float]? {
+        guard let rxNoiseFFTSetup else { return nil }
+        var real = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
+        var imaginary = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
+        paddedSamples.withUnsafeBufferPointer { input in
+            input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexInput in
+                real.withUnsafeMutableBufferPointer { realBuffer in
+                    imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
+                        var split = DSPSplitComplex(
+                            realp: realBuffer.baseAddress!,
+                            imagp: imaginaryBuffer.baseAddress!
+                        )
+                        vDSP_ctoz(complexInput, 2, &split, 1, vDSP_Length(Self.noiseReductionFFTHalfSize))
+                        vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_FORWARD))
+                    }
+                }
+            }
+        }
+        return packedRealFFTPower(real: real, imaginary: imaginary)
+    }
+
+    private func packedRealFFTPower(real: [Float], imaginary: [Float]) -> [Float] {
+        var power = [Float](repeating: 0, count: Self.noiseReductionBinCount)
+        power[0] = real[0] * real[0]
+        power[Self.noiseReductionFFTHalfSize] = imaginary[0] * imaginary[0]
+        guard Self.noiseReductionFFTHalfSize > 1 else { return power }
+        for bin in 1..<Self.noiseReductionFFTHalfSize {
+            power[bin] = real[bin] * real[bin] + imaginary[bin] * imaginary[bin]
+        }
+        return power
+    }
+
+    private func spectralNoiseReductionGains(real: [Float], imaginary: [Float]) -> [Float] {
+        let power = packedRealFFTPower(real: real, imaginary: imaginary)
+        let parameters = noiseReductionStrengthParameters()
+        var gains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
+        for bin in 0..<Self.noiseReductionBinCount {
+            let observed = max(power[bin], Self.minimumSpectralPower)
+            let noise = max(rxNoisePowerProfile[bin], Self.minimumSpectralPower)
+            let frequency = Float(bin) * Float(KV4PVoice.engineSampleRate) / Float(Self.noiseReductionFFTSize)
+            let oversubtraction = spectralOversubtraction(forFrequency: frequency, base: parameters.oversubtraction)
+            let residualPower = max(observed - noise * oversubtraction, observed * parameters.minimumPowerFloor)
+            let rawGain = sqrt(max(Self.minimumSpectralPower, residualPower) / observed)
+            let protectedGain = protectedSignalGain(
+                rawGain,
+                frequency: frequency,
+                signalToNoise: observed / noise,
+                parameters: parameters
+            )
+            let previous = rxNoiseReductionPreviousGains[bin]
+            let smoothing: Float = protectedGain > previous ? 0.52 : 0.18
+            let smoothed = previous * (1.0 - smoothing) + protectedGain * smoothing
+            let finalGain = min(1.0, max(parameters.minimumAmplitudeGain, smoothed))
+            gains[bin] = finalGain
+            rxNoiseReductionPreviousGains[bin] = finalGain
+        }
+        return gains
+    }
+
+    private func spectralOversubtraction(forFrequency frequency: Float, base: Float) -> Float {
+        switch frequency {
+        case 0..<180:
+            return base * 1.35
+        case 1_050...1_350, 2_000...2_400:
+            return base * 0.65
+        case 300...3_200:
+            return base * 0.82
+        case 4_000...Float(KV4PVoice.engineSampleRate / 2):
+            return base * 1.25
+        default:
+            return base
+        }
+    }
+
+    private func protectedSignalGain(
+        _ gain: Float,
+        frequency: Float,
+        signalToNoise: Float,
+        parameters: RXNoiseReductionParameters
+    ) -> Float {
+        var protected = gain
+        if (1_050...1_350).contains(frequency) || (2_000...2_400).contains(frequency) {
+            if signalToNoise >= 1.18 {
+                protected = max(protected, parameters.afskPreserveGain)
+            }
+        } else if (300...3_200).contains(frequency), signalToNoise >= 1.35 {
+            protected = max(protected, parameters.voicePreserveGain)
+        }
+        return protected
+    }
+
+    private func noiseReductionStrengthParameters() -> RXNoiseReductionParameters {
+        switch rxNoiseReductionStrength {
+        case "Light":
+            return RXNoiseReductionParameters(
+                oversubtraction: 0.70,
+                minimumPowerFloor: 0.42,
+                minimumAmplitudeGain: 0.58,
+                voicePreserveGain: 0.82,
+                afskPreserveGain: 0.88
+            )
+        case "Strong":
+            return RXNoiseReductionParameters(
+                oversubtraction: 1.35,
+                minimumPowerFloor: 0.08,
+                minimumAmplitudeGain: 0.24,
+                voicePreserveGain: 0.62,
+                afskPreserveGain: 0.74
+            )
+        default:
+            return RXNoiseReductionParameters(
+                oversubtraction: 1.05,
+                minimumPowerFloor: 0.18,
+                minimumAmplitudeGain: 0.38,
+                voicePreserveGain: 0.72,
+                afskPreserveGain: 0.82
+            )
         }
     }
 
@@ -1443,6 +1807,14 @@ final class KV4PAudioEngine: @unchecked Sendable {
         samples.reduce(Float(0)) { max($0, abs($1)) }
     }
 
+    private func rmsLevel(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        let sumSquares = samples.reduce(Double(0)) { partial, sample in
+            partial + Double(sample * sample)
+        }
+        return Float(sqrt(sumSquares / Double(samples.count)))
+    }
+
     private func formatPeak(_ peak: Float) -> String {
         String(format: "%.3f", peak)
     }
@@ -1477,6 +1849,21 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private enum PlaybackOutputMode: String {
         case scheduledBuffers = "scheduled"
         case sourceRing = "source-ring"
+    }
+
+    private struct RXSpeakerProcessingResult {
+        var samples: [Float]
+        var shouldPlay: Bool
+        var peak: Float
+        var reason: String
+    }
+
+    private struct RXNoiseReductionParameters {
+        var oversubtraction: Float
+        var minimumPowerFloor: Float
+        var minimumAmplitudeGain: Float
+        var voicePreserveGain: Float
+        var afskPreserveGain: Float
     }
 
     private var usesWirelessPlaybackProfile: Bool {
@@ -1556,6 +1943,14 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private static let underrunConcealmentBurstFrames = 2
     private static let lowWatermarkConcealmentFrames = 1
     private static let maximumConsecutiveConcealmentBursts = 4
+    private static let softwareSquelchHangFrameCount = 14
+    private static let noiseReductionFFTSize = 1_024
+    private static let noiseReductionFFTHalfSize = noiseReductionFFTSize / 2
+    private static let noiseReductionBinCount = noiseReductionFFTHalfSize + 1
+    private static let noiseReductionFFTLog2N = vDSP_Length(10)
+    private static let minimumNoiseProfileFrames = 24
+    private static let maximumNoiseProfileFrameCount = 20_000
+    private static let minimumSpectralPower: Float = 1.0e-10
     private static let maximumScheduledPlaybackBuffers = 6
     private static let maximumQueuedPlaybackBuffers = 18
     private static let lateFrameThresholdMS = 90

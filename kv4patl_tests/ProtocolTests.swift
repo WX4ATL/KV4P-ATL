@@ -194,6 +194,23 @@ final class ProtocolTests: XCTestCase {
         XCTAssertFalse(parsed.body.contains("175/000/A="))
     }
 
+    func testAPRSWeatherPositionExtensionLabelsWindSpeed() throws {
+        let service = APRSService()
+        let parsed = service.parse(packet: try makeAPRSPacket(
+            source: "WX4ATL-7",
+            destination: "APAT81",
+            info: "!3348.07N/08430.17W_175/004g005t077r000p000P000h50b10132Main HT weather"
+        ))
+
+        XCTAssertEqual(parsed.type, .weather)
+        XCTAssertEqual(parsed.dataPoint("Wind dir"), "175°")
+        XCTAssertEqual(parsed.dataPoint("Wind speed"), "5 mph")
+        XCTAssertEqual(parsed.dataPoint("Gust"), "6 mph")
+        XCTAssertNil(parsed.dataPoint("Course"))
+        XCTAssertNil(parsed.dataPoint("Speed"))
+        XCTAssertEqual(parsed.body, "Main HT weather")
+    }
+
     func testAPRSTimestampedObjectAndItemDecodeCoordinates() throws {
         let service = APRSService()
         let object = service.parse(packet: try makeAPRSPacket(
@@ -227,15 +244,19 @@ final class ProtocolTests: XCTestCase {
     func testAPRSWeatherTelemetryGPSAndThirdPartyDecode() throws {
         let service = APRSService()
         let weather = service.parse(packet: try makeAPRSPacket(info: "_10090556c220s004g005t077r000p000P000h50b10132"))
+        let weatherWithComment = service.parse(packet: try makeAPRSPacket(info: "_10090556c220s004g005t077r000p000P000h50b10132Atlanta weather"))
         let telemetry = service.parse(packet: try makeAPRSPacket(info: "T#123,111,222,333,444,555,10101010,Comment"))
         let gps = service.parse(packet: try makeAPRSPacket(info: "$GPGGA,123519,3348.070,N,08430.170,W,1,08,0.9,728.0,M,46.9,M,,*47"))
         let thirdParty = service.parse(packet: try makeAPRSPacket(info: "}WX4ATL-7>APAT81:!3348.07N/08430.17W>175/000/A=000728Main HT"))
 
         XCTAssertEqual(weather.type, .weather)
-        XCTAssertEqual(weather.body, "Weather report")
+        XCTAssertEqual(weather.body, "")
         XCTAssertEqual(weather.dataPoint("Wind dir"), "220°")
+        XCTAssertEqual(weather.dataPoint("Wind speed"), "5 mph")
         XCTAssertEqual(weather.dataPoint("Temp"), "77°F")
         XCTAssertEqual(weather.dataPoint("Pressure"), "1013.2 mb")
+        XCTAssertNil(weather.dataPoint("Speed"))
+        XCTAssertEqual(weatherWithComment.body, "Atlanta weather")
         XCTAssertEqual(telemetry.type, .telemetry)
         XCTAssertEqual(telemetry.dataPoint("Sequence"), "123")
         XCTAssertEqual(telemetry.dataPoint("Channels"), "111/222/333/444/555")

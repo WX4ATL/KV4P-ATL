@@ -11,7 +11,7 @@ UPSTREAM_REPO="${PROJECT_ROOT}/corpus/sources/repos/VanceVagell-kv4p-ht"
 BUILD_ROOT="${PROJECT_ROOT}/build/kv4p-ble-firmware-src"
 WEB_FIRMWARE_DIR="${PROJECT_ROOT}/web-flasher/firmware"
 UPDATE_UPSTREAM=0
-PROJECT_VERSION="${KV4P_ATL_PROJECT_VERSION:-0.2.9}"
+PROJECT_VERSION="${KV4P_ATL_PROJECT_VERSION:-0.2.10}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

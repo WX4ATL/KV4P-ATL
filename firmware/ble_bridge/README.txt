@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.9.
+Current shared development version: 0.2.10.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -122,6 +122,12 @@ uses conservative adaptive gain plus clipping counters only when weak mode is
 enabled. Firmware emits COMMAND_AFSK_STATS about every 500 ms while status
 reports are enabled so field testing can show RMS, peak, gain, clips, and
 successful CRC decodes.
+
+0.2.10 keeps the firmware behavior and binary payload aligned with 0.2.9 while
+regenerating the release manifest/flasher for the shared app/firmware version.
+The 0.2.10 functional change is in the iOS speaker policy and static-reduction
+DSP path: APRS weak-signal mode can keep the firmware AFSK chain open while the
+iPhone app locally mutes or squelches speaker playback.
 
 0.2.9 keeps the firmware behavior and binary payload aligned with 0.2.8 while
 regenerating the release manifest/flasher for the shared app/firmware version.

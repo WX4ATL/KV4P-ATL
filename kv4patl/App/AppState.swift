@@ -95,6 +95,10 @@ final class AppState: ObservableObject {
         }
         settings = loadedSettings
         audio.updateGainProfile(rxBoost: loadedSettings.rxAudioBoost, micBoost: loadedSettings.micGainBoost)
+        audio.updateReceiveProcessing(
+            noiseReductionEnabled: loadedSettings.rxNoiseReductionEnabled,
+            strength: loadedSettings.rxNoiseReductionStrength
+        )
         memories = store.loadMemories()
         let retentionCutoff = Date().addingTimeInterval(-max(60, loadedSettings.packetRetentionSeconds))
         messages = store.loadMessages().filter { $0.timestamp >= retentionCutoff }
@@ -113,12 +117,12 @@ final class AppState: ObservableObject {
         let rxAudioUIUpdateGate = rxAudioUIUpdateGate
         radioProtocol.eventHandler = { [weak self, audioEngine, rxAudioUIUpdateGate] event in
             if case .rxAudio(let frame) = event {
-                audioEngine.playReceivedFrameAsync(frame) { playbackIsReady in
-                    guard rxAudioUIUpdateGate.shouldScheduleMainUpdate(playbackIsReady: playbackIsReady) else { return }
-                    Task { @MainActor in
-                        guard let self else { return }
-                        self.handleRxAudioPlaybackUpdate(playbackIsReady: playbackIsReady, audioEngine: audioEngine)
-                    }
+                Task { @MainActor in
+                    self?.handleRxAudioFrame(
+                        frame,
+                        audioEngine: audioEngine,
+                        rxAudioUIUpdateGate: rxAudioUIUpdateGate
+                    )
                 }
             } else {
                 Task { @MainActor in self?.handle(event) }
@@ -134,6 +138,7 @@ final class AppState: ObservableObject {
 
     var radioActivityLabel: String {
         if isTransmitting || deviceState?.mode == .tx { return "TX" }
+        if rxSpeakerMutedForAPRSFrequency { return "IDLE" }
         if transportIsConnected && settings.squelch == 0 { return "RX" }
         if receiveAudioActive { return "RX" }
         return "IDLE"
@@ -266,9 +271,18 @@ final class AppState: ObservableObject {
         settings.packetRetentionSeconds = min(604_800, max(60, settings.packetRetentionSeconds))
         store.saveSettings(settings)
         audio.updateGainProfile(rxBoost: settings.rxAudioBoost, micBoost: settings.micGainBoost)
+        audio.updateReceiveProcessing(
+            noiseReductionEnabled: settings.rxNoiseReductionEnabled,
+            strength: settings.rxNoiseReductionStrength
+        )
         pruneStoredAPRSPackets()
         configureAPRSBeaconing()
         applySettingsToRadio()
+    }
+
+    func resetReceiveNoiseProfile() {
+        audio.resetReceiveNoiseProfile()
+        lastDebugLine = "RX noise profile reset; leave squelch open on static for a moment so the DSP can relearn the floor."
     }
 
     func addMemory(_ memory: ChannelMemory) {
@@ -645,8 +659,7 @@ final class AppState: ObservableObject {
             publishDeviceState(state)
         case .rxAudio(let frame):
             // Tests and any future direct callers still get the nonblocking path.
-            audio.playReceivedFrameAsync(frame)
-            publishAudioDebugIfNeeded()
+            handleRxAudioFrame(frame, audioEngine: audio, rxAudioUIUpdateGate: rxAudioUIUpdateGate)
         case .afskStats(let stats):
             afskStats = stats
         case .ax25(let data):
@@ -900,6 +913,14 @@ final class AppState: ObservableObject {
         return .some(frequency)
     }
 
+    private var rxSpeakerMutedForAPRSFrequency: Bool {
+        guard settings.aprsRxMuteEnabled,
+              let aprsFrequency = try? selectedBeaconFrequency() else {
+            return false
+        }
+        return abs(activeRxFrequency - aprsFrequency) <= Self.aprsFrequencyMatchToleranceMHz
+    }
+
     private var desiredLocationAccuracy: CLLocationAccuracy {
         settings.aprsAccuracy == "Approx" ? kCLLocationAccuracyKilometer : kCLLocationAccuracyNearestTenMeters
     }
@@ -1015,11 +1036,54 @@ final class AppState: ObservableObject {
         lastDebugLine = audio.playbackDebugSummary
     }
 
+    private func handleRxAudioFrame(
+        _ frame: Data,
+        audioEngine: KV4PAudioEngine,
+        rxAudioUIUpdateGate: RXAudioUIUpdateGate
+    ) {
+        let speakerMuted = rxSpeakerMutedForAPRSFrequency
+        let softwareSquelchLevel = settings.aprsWeakSignalRxEnabled ? settings.squelch : 0
+        let playbackMayBeMutedByPolicy = speakerMuted || softwareSquelchLevel > 0
+        audioEngine.playReceivedFrameAsync(
+            frame,
+            speakerMuted: speakerMuted,
+            softwareSquelchLevel: softwareSquelchLevel
+        ) { playbackIsReady in
+            guard rxAudioUIUpdateGate.shouldScheduleMainUpdate(playbackIsReady: playbackIsReady) else { return }
+            Task { @MainActor in
+                self.handleRxAudioPlaybackUpdate(
+                    playbackIsReady: playbackIsReady,
+                    playbackMayBeMutedByPolicy: playbackMayBeMutedByPolicy,
+                    speakerMuted: speakerMuted,
+                    audioEngine: audioEngine
+                )
+            }
+        }
+    }
+
     private func handleRxAudioPlaybackUpdate(playbackIsReady: Bool, audioEngine: KV4PAudioEngine) {
+        handleRxAudioPlaybackUpdate(
+            playbackIsReady: playbackIsReady,
+            playbackMayBeMutedByPolicy: false,
+            speakerMuted: false,
+            audioEngine: audioEngine
+        )
+    }
+
+    private func handleRxAudioPlaybackUpdate(
+        playbackIsReady: Bool,
+        playbackMayBeMutedByPolicy: Bool,
+        speakerMuted: Bool,
+        audioEngine: KV4PAudioEngine
+    ) {
         publishAudioDebugIfNeeded()
         if playbackIsReady {
             noteReceivePlaybackAfterSquelch(force: awaitingRxFrameAfterTransmit || !receiveAudioActive)
             noteRxAudioFrameAfterTransmitIfNeeded()
+        } else if awaitingRxFrameAfterTransmit && playbackMayBeMutedByPolicy && !isTransmitting {
+            noteRxAudioFrameArrivedButSpeakerMuted(
+                reason: speakerMuted ? "Receive audio muted on APRS frequency." : "Radio RX is below iPhone squelch."
+            )
         } else if awaitingRxFrameAfterTransmit && !isTransmitting {
             lastDebugLine = "RX audio packet arrived; waiting for playback buffer to arm. \(audioEngine.playbackDebugSummary)"
         }
@@ -1066,7 +1130,7 @@ final class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             await MainActor.run {
                 guard let self, !self.isTransmitting else { return }
-                if self.settings.squelch == 0 && self.transportIsConnected {
+                if self.settings.squelch == 0 && self.transportIsConnected && !self.rxSpeakerMutedForAPRSFrequency {
                     if !self.receiveAudioActive {
                         self.receiveAudioActive = true
                     }
@@ -1128,6 +1192,18 @@ final class AppState: ObservableObject {
         postTransmitRecoveryTask = nil
         statusLine = "Receive audio live."
         lastDebugLine = "RX playback armed after PTT. \(audio.playbackDebugSummary)"
+        scheduleQueuedTransmitCheck()
+    }
+
+    private func noteRxAudioFrameArrivedButSpeakerMuted(reason: String) {
+        guard awaitingRxFrameAfterTransmit, !isTransmitting else { return }
+        awaitingRxFrameAfterTransmit = false
+        receiveReadyAfterTransmit = true
+        receiveAudioActive = false
+        postTransmitRecoveryTask?.cancel()
+        postTransmitRecoveryTask = nil
+        statusLine = reason
+        lastDebugLine = "\(reason) Radio audio frames are arriving, but speaker playback is muted by policy. \(audio.playbackDebugSummary)"
         scheduleQueuedTransmitCheck()
     }
 
@@ -1361,6 +1437,7 @@ final class AppState: ObservableObject {
     private static let receiveActivitySpeakerSettleSeconds: TimeInterval = 0.18
     private static let receiveAudioAudibleHoldSeconds: TimeInterval = 2.6
     private static let receiveAudioOpenSquelchHoldSeconds: TimeInterval = 8.0
+    private static let aprsFrequencyMatchToleranceMHz: Float = 0.001
 }
 
 private final class APRSLocationProvider: NSObject, CLLocationManagerDelegate {

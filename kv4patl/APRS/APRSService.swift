@@ -398,8 +398,7 @@ struct APRSService {
            courseValue < 90 {
             let course = courseValue * 4
             let speed = max(0, Int(pow(1.08, Double(speedValue)).rounded()) - 1)
-            dataPoints.append(dataPoint("Course", "\(course)°", "location.north.line", "blue"))
-            dataPoints.append(speedDataPoint(knots: speed))
+            dataPoints.append(contentsOf: courseSpeedDataPoints(course: course, knots: speed, isWeather: symbolCode == "_"))
         }
 
         let rawComment = chars.count > start + 13 ? String(chars.dropFirst(start + 13)) : ""
@@ -419,8 +418,7 @@ struct APRSService {
                parts[1].count == 3,
                let course = Int(parts[0]),
                let speed = Int(parts[1]) {
-                dataPoints.append(dataPoint("Course", "\(course)°", "location.north.line", "blue"))
-                dataPoints.append(speedDataPoint(knots: speed))
+                dataPoints.append(contentsOf: courseSpeedDataPoints(course: course, knots: speed, isWeather: symbolCode == "_"))
                 comment.removeFirst(7)
             }
         }
@@ -477,6 +475,7 @@ struct APRSService {
         var dataPoints: [APRSDataPoint] = []
         let widths: [Character: Int] = ["c": 3, "s": 3, "g": 3, "t": 3, "r": 3, "p": 3, "P": 3, "h": 2, "b": 5, "L": 3, "l": 3, "X": 3]
         var index = 0
+        var lastParsedEnd = 0
 
         while index < chars.count {
             let key = chars[index]
@@ -491,9 +490,9 @@ struct APRSService {
             }
             switch key {
             case "c":
-                dataPoints.append(dataPoint("Wind dir", "\(value)°", "safari", "blue"))
+                dataPoints.append(windDirectionDataPoint(degrees: Int(value) ?? 0))
             case "s":
-                dataPoints.append(dataPoint("Wind", "\(mph(fromKnots: Int(value) ?? 0)) mph", "wind", "blue"))
+                dataPoints.append(windSpeedDataPoint(knots: Int(value) ?? 0))
             case "g":
                 dataPoints.append(dataPoint("Gust", "\(mph(fromKnots: Int(value) ?? 0)) mph", "wind.snow", "blue"))
             case "t":
@@ -517,10 +516,12 @@ struct APRSService {
             default:
                 break
             }
+            lastParsedEnd = index + width + 1
             index += width + 1
         }
 
-        return ParsedPayload(body: dataPoints.isEmpty ? text : "Weather report", dataPoints: dataPoints)
+        let body = dataPoints.isEmpty ? text : weatherComment(in: chars, after: lastParsedEnd)
+        return ParsedPayload(body: body, dataPoints: dataPoints)
     }
 
     private func parseTelemetryInfo(_ body: String) -> ParsedPayload {
@@ -807,8 +808,34 @@ struct APRSService {
         return String(format: "%.2f", Double(integer) / 100.0)
     }
 
+    private func courseSpeedDataPoints(course: Int, knots: Int, isWeather: Bool) -> [APRSDataPoint] {
+        if isWeather {
+            return [
+                windDirectionDataPoint(degrees: course),
+                windSpeedDataPoint(knots: knots)
+            ]
+        }
+        return [
+            dataPoint("Course", "\(course)°", "location.north.line", "blue"),
+            speedDataPoint(knots: knots)
+        ]
+    }
+
     private func speedDataPoint(knots: Int) -> APRSDataPoint {
         dataPoint("Speed", "\(mph(fromKnots: knots)) mph", "speedometer", "green")
+    }
+
+    private func windDirectionDataPoint(degrees: Int) -> APRSDataPoint {
+        dataPoint("Wind dir", "\(degrees)°", "safari", "blue")
+    }
+
+    private func windSpeedDataPoint(knots: Int) -> APRSDataPoint {
+        dataPoint("Wind speed", "\(mph(fromKnots: knots)) mph", "wind", "blue")
+    }
+
+    private func weatherComment(in chars: [Character], after index: Int) -> String {
+        guard index < chars.count else { return "" }
+        return String(chars.dropFirst(index)).trimmingCharacters(in: CharacterSet(charactersIn: " /,\t\r\n"))
     }
 
     private func mph(fromKnots knots: Int) -> Int {

@@ -68,6 +68,9 @@ struct AppSettings: Codable, Equatable {
     var rxPowerSaveEnabled = false
     var rxPowerSaveProfile = "Balanced"
     var aprsWeakSignalRxEnabled = false
+    var aprsRxMuteEnabled = false
+    var rxNoiseReductionEnabled = false
+    var rxNoiseReductionStrength = "Balanced"
 
     init() {}
 
@@ -107,6 +110,9 @@ struct AppSettings: Codable, Equatable {
         rxPowerSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxPowerSaveEnabled) ?? rxPowerSaveEnabled
         rxPowerSaveProfile = try container.decodeIfPresent(String.self, forKey: .rxPowerSaveProfile) ?? rxPowerSaveProfile
         aprsWeakSignalRxEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsWeakSignalRxEnabled) ?? aprsWeakSignalRxEnabled
+        aprsRxMuteEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsRxMuteEnabled) ?? aprsRxMuteEnabled
+        rxNoiseReductionEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxNoiseReductionEnabled) ?? rxNoiseReductionEnabled
+        rxNoiseReductionStrength = try container.decodeIfPresent(String.self, forKey: .rxNoiseReductionStrength) ?? rxNoiseReductionStrength
     }
 }
 

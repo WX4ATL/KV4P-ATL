@@ -36,6 +36,20 @@ struct SettingsView: View {
                     Text("Normal").tag("Normal")
                     Text("High").tag("High")
                 }
+                Toggle("RX noise reduction", isOn: $app.settings.rxNoiseReductionEnabled)
+                if app.settings.rxNoiseReductionEnabled {
+                    Picker("Noise reduction strength", selection: $app.settings.rxNoiseReductionStrength) {
+                        Text("Light").tag("Light")
+                        Text("Balanced").tag("Balanced")
+                        Text("Strong").tag("Strong")
+                    }
+                    Button("Reset RX noise profile") {
+                        app.resetReceiveNoiseProfile()
+                    }
+                    Text("Learns the open-squelch static spectrum and subtracts it from speaker playback while protecting voice and APRS tone bands.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Picker("Mic gain boost", selection: $app.settings.micGainBoost) {
                     Text("Low").tag("Low")
                     Text("Normal").tag("Normal")
@@ -109,6 +123,10 @@ struct SettingsView: View {
                 Text("Optimizes the radio receive chain for packet decoding by opening module squelch, disabling SA818 audio filters, and using AFSK-only gain control while this mode is enabled.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                Toggle("Mute RX audio on APRS frequency", isOn: $app.settings.aprsRxMuteEnabled)
+                Text("When the radio is tuned to the selected APRS frequency, the iPhone speaker stays muted while APRS decode and packet logging continue in the background.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Toggle("Digipeat (mesh)", isOn: $app.settings.digipeatPackets)
                 Toggle("Expose standard BLE KISS TNC", isOn: $app.settings.exposeKISSTNC)
                 if app.settings.exposeKISSTNC {
@@ -152,7 +170,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.9")
+                LabeledContent("App version", value: "0.2.10")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
