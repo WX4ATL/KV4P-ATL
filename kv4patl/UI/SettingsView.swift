@@ -152,7 +152,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.8")
+                LabeledContent("App version", value: "0.2.9")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 

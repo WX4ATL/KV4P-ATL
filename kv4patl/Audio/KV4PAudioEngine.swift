@@ -57,6 +57,8 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private var playbackVarispeedAttached = false
     private var sourceNode: AVAudioSourceNode?
     private var sourceNodeAttached = false
+    private var playbackOutputMode: PlaybackOutputMode = .scheduledBuffers
+    private var routeChangeObserver: NSObjectProtocol?
     private let playbackRenderLock = NSLock()
     private var playbackSampleRing = [Float](repeating: 0, count: KV4PAudioEngine.playbackSampleRingCapacity)
     private var playbackSampleHead = 0
@@ -102,7 +104,20 @@ final class KV4PAudioEngine: @unchecked Sendable {
     init(codec: VoiceCodec = IMAADPCMCodec()) {
         self.codec = codec
         workQueue.setSpecific(key: workQueueKey, value: ())
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: nil
+        ) { [weak self] notification in
+            self?.handleAudioRouteChange(notification)
+        }
         logAudio("audio engine initialized; BLE GATT/KISS audio uses media playback for RX and short playAndRecord sessions only during PTT")
+    }
+
+    deinit {
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
     }
 
     func requestRecordPermission(_ completion: @escaping @Sendable (Bool) -> Void) {
@@ -332,6 +347,28 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
+    private func handleAudioRouteChange(_ notification: Notification) {
+        let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            let reason = rawReason.flatMap { AVAudioSession.RouteChangeReason(rawValue: $0) }
+            let reasonLabel = reason.map { "\($0)" } ?? "unknown"
+            let session = AVAudioSession.sharedInstance()
+            logAudio("audio route changed reason=\(reasonLabel) \(describeAudioRoute(session))")
+            guard mode != .stopped else { return }
+            do {
+                try configureSessionForRadioAudio(requiresInput: mode == .capture)
+                configurePlaybackOutputForCurrentRoute(forceReconnect: true)
+                if !engine.isRunning {
+                    engine.prepare()
+                    try engine.start()
+                }
+            } catch {
+                logAudio("audio route reconfigure failed after route change: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func playReceivedFrame(_ frame: Data) throws {
         try syncOnWorkQueue {
             _ = try playReceivedFrameOnWorkQueue(frame)
@@ -382,7 +419,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         let queuedLatencyMS = queued * Self.frameDurationMS
         let catchUpFrames = (latencyCatchUpDroppedSamples + KV4PVoice.engineFrameSize - 1) / KV4PVoice.engineFrameSize
         let renderStats = playbackRenderStats()
-        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), rate \(String(format: "%.3f", playbackRate))x, late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), \(compactRouteSummary())"
+        var summary = "RX audio \(decodedPlaybackFrames) frames, rendered \(renderStats.frames), cb \(renderStats.callbacks), queued \(queued) (~\(queuedLatencyMS) ms), rate \(String(format: "%.3f", playbackRate))x, late \(latePlaybackFrames), underruns \(playbackUnderruns), conceal \(concealedPlaybackFrames), catchup \(catchUpFrames), drops \(droppedPlaybackBuffers), max gap \(largestArrivalGapMS) ms, buffer \(adaptiveRebufferPrerollBuffers), mic \(inputTapInstalled ? "on" : "off"), mode \(modeLabel), out \(playbackOutputMode.rawValue), peak d/r \(formatPeak(lastDecodedPeak))/\(formatPeak(renderStats.peak)), \(compactRouteSummary())"
         if let lastPlaybackGraphRecoveryMessage {
             summary += ", graph \(playbackGraphRecoveryAttempts): \(lastPlaybackGraphRecoveryMessage)"
         }
@@ -432,7 +469,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         trimQueuedPlaybackBacklogIfNeeded()
 
         if !bufferedPlaybackActive {
-            let target = hasStartedPlaybackOnce ? adaptiveRebufferPrerollBuffers : Self.initialPlaybackPrerollBuffers
+            let target = hasStartedPlaybackOnce ? adaptiveRebufferPrerollBuffers : initialPlaybackPrerollTarget
             let queuedFrames = playbackQueuedFrameCount()
             guard queuedFrames >= target || shouldForceArmPlayback(queuedFrames: queuedFrames) else {
                 try recoverSilentPlaybackGraphIfNeeded(queuedFrames: queuedFrames)
@@ -456,9 +493,30 @@ final class KV4PAudioEngine: @unchecked Sendable {
         try recoverSilentPlaybackGraphIfNeeded(queuedFrames: playbackQueuedFrameCount())
     }
 
-    private func enqueuePlaybackSamples(_ samples: [Float]) throws {
+    private func enqueuePlaybackSamples(_ samples: [Float], allowLowWatermarkRefill: Bool = true) throws {
+        guard !samples.isEmpty else { return }
+        try preparePlaybackEngine(forcePlayback: false)
+        if playbackOutputMode == .sourceRing {
+            appendPlaybackSamples(samples)
+            let queuedFrames = playbackQueuedFrameCount()
+            if !playbackOutputIsArmed() {
+                let target = hasStartedPlaybackOnce ? adaptiveRebufferPrerollBuffers : initialPlaybackPrerollTarget
+                guard queuedFrames >= target || shouldForceArmPlayback(queuedFrames: queuedFrames) else {
+                    return
+                }
+                bufferedPlaybackActive = true
+                hasStartedPlaybackOnce = true
+                setPlaybackOutputArmed(true)
+            }
+            updatePlaybackRateForQueuedFrames(queuedFrames)
+            if allowLowWatermarkRefill {
+                refillLowPlaybackWatermarkIfNeeded()
+            }
+            return
+        }
+
         guard let buffer = makePlaybackBuffer(samples: samples) else { return }
-        try enqueuePlaybackBuffer(buffer)
+        try enqueuePlaybackBuffer(buffer, allowLowWatermarkRefill: allowLowWatermarkRefill)
     }
 
     private func schedulePendingPlaybackBuffers() {
@@ -492,7 +550,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             bufferedPlaybackActive = false
             playbackUnderruns += 1
             consecutiveHealthyPlaybackFrames = 0
-            adaptiveRebufferPrerollBuffers = min(Self.maximumAdaptiveRebufferPrerollBuffers, adaptiveRebufferPrerollBuffers + 2)
+            adaptiveRebufferPrerollBuffers = min(maximumAdaptiveRebufferPrerollTarget, adaptiveRebufferPrerollBuffers + 2)
             updatePlaybackRateForQueuedFrames(0, force: true)
             try? scheduleUnderrunConcealmentBurst()
         }
@@ -501,8 +559,9 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private func refillLowPlaybackWatermarkIfNeeded() {
         guard bufferedPlaybackActive else { return }
         let queuedFrames = playbackQueuedFrameCount()
-        guard queuedFrames > 0, queuedFrames < Self.minimumContinuousPlaybackBuffers else { return }
-        let framesNeeded = Self.minimumContinuousPlaybackBuffers - queuedFrames
+        let minimumContinuousBuffers = minimumContinuousPlaybackTarget
+        guard queuedFrames > 0, queuedFrames < minimumContinuousBuffers else { return }
+        let framesNeeded = minimumContinuousBuffers - queuedFrames
         let framesToConceal = min(Self.lowWatermarkConcealmentFrames, framesNeeded)
         guard framesToConceal > 0 else { return }
         try? enqueueConcealmentFrames(framesToConceal)
@@ -516,15 +575,15 @@ final class KV4PAudioEngine: @unchecked Sendable {
             let gapMS = Int(now.timeIntervalSince(lastPlaybackFrameArrival) * 1_000)
             recordedGapMS = gapMS
             largestArrivalGapMS = max(largestArrivalGapMS, gapMS)
-            if gapMS > Self.lateFrameThresholdMS {
+            if gapMS > lateFrameThresholdTargetMS {
                 latePlaybackFrames += 1
                 consecutiveHealthyPlaybackFrames = 0
-                let gapFrames = max(Self.baseRebufferPrerollBuffers, min(Self.maximumAdaptiveRebufferPrerollBuffers, (gapMS + Self.frameDurationMS - 1) / Self.frameDurationMS + 1))
+                let gapFrames = max(baseRebufferPrerollTarget, min(maximumAdaptiveRebufferPrerollTarget, (gapMS + Self.frameDurationMS - 1) / Self.frameDurationMS + 1))
                 adaptiveRebufferPrerollBuffers = max(adaptiveRebufferPrerollBuffers, gapFrames)
             } else {
                 consecutiveHealthyPlaybackFrames += 1
-                if consecutiveHealthyPlaybackFrames >= Self.healthyFramesBeforePrerollStepDown,
-                   adaptiveRebufferPrerollBuffers > Self.baseRebufferPrerollBuffers {
+                if consecutiveHealthyPlaybackFrames >= healthyFramesBeforePrerollStepDownTarget,
+                   adaptiveRebufferPrerollBuffers > baseRebufferPrerollTarget {
                     adaptiveRebufferPrerollBuffers -= 1
                     consecutiveHealthyPlaybackFrames = 0
                 }
@@ -535,7 +594,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private func enqueueConcealmentForArrivalGapIfNeeded(_ gapMS: Int?) throws {
-        guard let gapMS, gapMS > Self.lateFrameThresholdMS else { return }
+        guard let gapMS, gapMS > lateFrameThresholdTargetMS else { return }
         let missingFrames = max(0, (gapMS + (Self.frameDurationMS / 2)) / Self.frameDurationMS - 1)
         guard missingFrames > 0 else { return }
 
@@ -558,9 +617,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         guard count > 0 else { return }
         for _ in 0..<count {
             let samples = try codec.decodePLC()
-            if let buffer = makePlaybackBuffer(samples: samples) {
-                try enqueuePlaybackBuffer(buffer, allowLowWatermarkRefill: false)
-            }
+            try enqueuePlaybackSamples(samples, allowLowWatermarkRefill: false)
             concealedPlaybackFrames += 1
         }
     }
@@ -744,7 +801,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         latePlaybackFrames = 0
         concealedPlaybackFrames = 0
         largestArrivalGapMS = 0
-        adaptiveRebufferPrerollBuffers = Self.baseRebufferPrerollBuffers
+        adaptiveRebufferPrerollBuffers = baseRebufferPrerollTarget
         consecutiveHealthyPlaybackFrames = 0
         consecutiveConcealmentBursts = 0
         lastPlaybackFrameArrival = nil
@@ -860,7 +917,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
 
     private func trimQueuedPlaybackBacklogIfNeeded() {
         let queuedBuffers = pendingPlaybackBuffers.count + scheduledPlaybackBuffers
-        guard queuedBuffers > Self.liveQueuedPlaybackHardCapBuffers else { return }
+        guard queuedBuffers > liveQueuedPlaybackHardCapTargetBuffers else { return }
         let now = Date()
         guard now.timeIntervalSince(lastQueuedPlaybackHardTrim) >= Self.liveQueuedPlaybackHardTrimCooldownSeconds else {
             return
@@ -873,7 +930,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         scheduledPlaybackBuffers = 0
         bufferedPlaybackActive = false
 
-        let keepPending = min(Self.liveQueuedPlaybackTrimTargetBuffers, pendingPlaybackBuffers.count)
+        let keepPending = min(liveQueuedPlaybackTrimTargetBuffers, pendingPlaybackBuffers.count)
         let pendingToDrop = pendingPlaybackBuffers.count - keepPending
         if pendingToDrop > 0 {
             pendingPlaybackBuffers.removeFirst(pendingToDrop)
@@ -916,9 +973,10 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private func desiredPlaybackRate(forQueuedFrames queuedFrames: Int) -> Float {
-        guard queuedFrames > Self.livePlaybackRateTargetBuffers else { return 1.0 }
+        let rateTargetBuffers = livePlaybackRateTargetBufferCount
+        guard queuedFrames > rateTargetBuffers else { return 1.0 }
         let excessFrames = min(
-            queuedFrames - Self.livePlaybackRateTargetBuffers,
+            queuedFrames - rateTargetBuffers,
             Self.livePlaybackRateFullScaleExcessBuffers
         )
         let ratio = Float(excessFrames) / Float(Self.livePlaybackRateFullScaleExcessBuffers)
@@ -926,15 +984,15 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private func trimExcessPlaybackLatencyLocked() {
-        let hardCapSamples = Self.liveLatencyHardCapBuffers * KV4PVoice.engineFrameSize
+        let hardCapSamples = liveLatencyHardCapTargetBuffers * KV4PVoice.engineFrameSize
         guard playbackSampleCount > hardCapSamples else { return }
-        let targetSamples = Self.liveLatencyTrimTargetBuffers * KV4PVoice.engineFrameSize
+        let targetSamples = liveLatencyTrimTargetBufferCount * KV4PVoice.engineFrameSize
         dropPlaybackSamplesLocked(playbackSampleCount - targetSamples)
         latencyCatchUpCountdown = 0
     }
 
     private func dropCatchUpSampleIfNeededLocked() {
-        let softCapSamples = Self.liveLatencySoftCapBuffers * KV4PVoice.engineFrameSize
+        let softCapSamples = liveLatencySoftCapTargetBuffers * KV4PVoice.engineFrameSize
         guard playbackSampleCount > softCapSamples else {
             latencyCatchUpCountdown = 0
             return
@@ -942,10 +1000,10 @@ final class KV4PAudioEngine: @unchecked Sendable {
 
         latencyCatchUpCountdown -= 1
         guard latencyCatchUpCountdown <= 0 else { return }
-        let fastCapSamples = Self.liveLatencyFastCatchUpBuffers * KV4PVoice.engineFrameSize
+        let fastCapSamples = liveLatencyFastCatchUpTargetBuffers * KV4PVoice.engineFrameSize
         latencyCatchUpCountdown = playbackSampleCount > fastCapSamples
-            ? Self.liveLatencyFastCatchUpStride
-            : Self.liveLatencySlowCatchUpStride
+            ? liveLatencyFastCatchUpStrideCount
+            : liveLatencySlowCatchUpStrideCount
         dropPlaybackSamplesLocked(1)
     }
 
@@ -965,7 +1023,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             mode = .playback
         }
         try configureSessionForRadioAudio(requiresInput: mode == .capture)
-        ensurePlayerAttached()
+        configurePlaybackOutputForCurrentRoute(forceReconnect: forcePlayback)
         if !engine.isRunning {
             engine.prepare()
             try engine.start()
@@ -1065,7 +1123,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         let targetCategory: AVAudioSession.Category = requiresInput ? .playAndRecord : .playback
         let targetMode: AVAudioSession.Mode = .default
         let targetOptions: AVAudioSession.CategoryOptions = requiresInput
-            ? [.defaultToSpeaker, .mixWithOthers]
+            ? [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP]
             : [.mixWithOthers]
         let targetKind: AudioSessionKind = requiresInput ? .capture : .playback
 
@@ -1128,9 +1186,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         options: AVAudioSession.CategoryOptions,
         kind: AudioSessionKind
     ) throws {
-        let hasRequiredOptions =
-            (!options.contains(.defaultToSpeaker) || session.categoryOptions.contains(.defaultToSpeaker)) &&
-            (!options.contains(.mixWithOthers) || session.categoryOptions.contains(.mixWithOthers))
+        let hasRequiredOptions = session.categoryOptions.intersection(options) == options
 
         guard configuredSessionKind != kind ||
               session.category != category ||
@@ -1233,6 +1289,56 @@ final class KV4PAudioEngine: @unchecked Sendable {
         engine.connect(sourceNode, to: engine.mainMixerNode, format: playbackFormat)
     }
 
+    private func disconnectSourceOutput() {
+        guard let sourceNode else { return }
+        let connectionPoints = engine.outputConnectionPoints(for: sourceNode, outputBus: 0)
+        guard !connectionPoints.isEmpty else { return }
+        engine.disconnectNodeOutput(sourceNode)
+    }
+
+    private func configurePlaybackOutputForCurrentRoute(forceReconnect: Bool = false) {
+        let desiredMode = preferredPlaybackOutputMode(for: AVAudioSession.sharedInstance())
+        let switchingMode = desiredMode != playbackOutputMode
+
+        if switchingMode {
+            logAudio("playback output switching \(playbackOutputMode.rawValue) -> \(desiredMode.rawValue) \(compactRouteSummary())")
+            if desiredMode == .sourceRing {
+                player.stop()
+                pendingPlaybackBuffers.removeAll(keepingCapacity: true)
+                scheduledPlaybackBuffers = 0
+                clearPlaybackSampleRing()
+                bufferedPlaybackActive = false
+            } else {
+                setPlaybackOutputArmed(false)
+                clearPlaybackSampleRing()
+                bufferedPlaybackActive = false
+                disconnectSourceOutput()
+            }
+            playbackOutputMode = desiredMode
+            adaptiveRebufferPrerollBuffers = baseRebufferPrerollTarget
+        }
+
+        switch desiredMode {
+        case .scheduledBuffers:
+            ensurePlayerAttached(forceReconnect: forceReconnect || switchingMode)
+        case .sourceRing:
+            ensureSourceAttached(forceReconnect: forceReconnect || switchingMode)
+        }
+    }
+
+    private func preferredPlaybackOutputMode(for session: AVAudioSession) -> PlaybackOutputMode {
+        session.currentRoute.outputs.contains { isBufferedWirelessOutput($0.portType) } ? .sourceRing : .scheduledBuffers
+    }
+
+    private func isBufferedWirelessOutput(_ portType: AVAudioSession.Port) -> Bool {
+        switch portType {
+        case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .carAudio, .airPlay:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func preferBuiltInInputIfAvailable(_ session: AVAudioSession) {
         guard let inputs = session.availableInputs else { return }
         let preferredInput = inputs.first { $0.portType == .builtInMic } ?? inputs.first
@@ -1257,7 +1363,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
         let inputs = session.currentRoute.inputs.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",")
         let outputs = session.currentRoute.outputs.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",")
         let availableInputs = session.availableInputs?.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",") ?? "none"
-        return "route in[\(inputs.isEmpty ? "none" : inputs)] out[\(outputs.isEmpty ? "none" : outputs)] available[\(availableInputs)] inputChannels=\(session.inputNumberOfChannels) outputChannels=\(session.outputNumberOfChannels) category=\(session.category.rawValue) mode=\(session.mode.rawValue)"
+        return "route in[\(inputs.isEmpty ? "none" : inputs)] out[\(outputs.isEmpty ? "none" : outputs)] available[\(availableInputs)] inputChannels=\(session.inputNumberOfChannels) outputChannels=\(session.outputNumberOfChannels) sampleRate=\(Int(session.sampleRate)) io=\(Int(session.ioBufferDuration * 1_000))ms category=\(session.category.rawValue) mode=\(session.mode.rawValue)"
     }
 
     private func describeFormat(_ format: AVAudioFormat) -> String {
@@ -1267,7 +1373,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private func compactRouteSummary() -> String {
         let session = AVAudioSession.sharedInstance()
         let output = session.currentRoute.outputs.first?.portType.rawValue ?? "none"
-        return "out \(output), cat \(session.category.rawValue), sess \(session.mode.rawValue), io \(Int(session.ioBufferDuration * 1_000)) ms, vol \(String(format: "%.2f", session.outputVolume))"
+        return "out \(output), cat \(session.category.rawValue), sess \(session.mode.rawValue), sr \(Int(session.sampleRate)), io \(Int(session.ioBufferDuration * 1_000)) ms, vol \(String(format: "%.2f", session.outputVolume))"
     }
 
     private static func gainMultiplier(for setting: String, normal: Float, high: Float) -> Float {
@@ -1368,6 +1474,75 @@ final class KV4PAudioEngine: @unchecked Sendable {
         case capture
     }
 
+    private enum PlaybackOutputMode: String {
+        case scheduledBuffers = "scheduled"
+        case sourceRing = "source-ring"
+    }
+
+    private var usesWirelessPlaybackProfile: Bool {
+        playbackOutputMode == .sourceRing
+    }
+
+    private var initialPlaybackPrerollTarget: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessInitialPlaybackPrerollBuffers : Self.initialPlaybackPrerollBuffers
+    }
+
+    private var baseRebufferPrerollTarget: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessBaseRebufferPrerollBuffers : Self.baseRebufferPrerollBuffers
+    }
+
+    private var minimumContinuousPlaybackTarget: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessMinimumContinuousPlaybackBuffers : Self.minimumContinuousPlaybackBuffers
+    }
+
+    private var maximumAdaptiveRebufferPrerollTarget: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessMaximumAdaptiveRebufferPrerollBuffers : Self.maximumAdaptiveRebufferPrerollBuffers
+    }
+
+    private var healthyFramesBeforePrerollStepDownTarget: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessHealthyFramesBeforePrerollStepDown : Self.healthyFramesBeforePrerollStepDown
+    }
+
+    private var lateFrameThresholdTargetMS: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLateFrameThresholdMS : Self.lateFrameThresholdMS
+    }
+
+    private var livePlaybackRateTargetBufferCount: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLivePlaybackRateTargetBuffers : Self.livePlaybackRateTargetBuffers
+    }
+
+    private var liveQueuedPlaybackHardCapTargetBuffers: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveQueuedPlaybackHardCapBuffers : Self.liveQueuedPlaybackHardCapBuffers
+    }
+
+    private var liveQueuedPlaybackTrimTargetBuffers: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveQueuedPlaybackTrimTargetBuffers : Self.liveQueuedPlaybackTrimTargetBuffers
+    }
+
+    private var liveLatencySoftCapTargetBuffers: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencySoftCapBuffers : Self.liveLatencySoftCapBuffers
+    }
+
+    private var liveLatencyFastCatchUpTargetBuffers: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencyFastCatchUpBuffers : Self.liveLatencyFastCatchUpBuffers
+    }
+
+    private var liveLatencyHardCapTargetBuffers: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencyHardCapBuffers : Self.liveLatencyHardCapBuffers
+    }
+
+    private var liveLatencyTrimTargetBufferCount: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencyTrimTargetBuffers : Self.liveLatencyTrimTargetBuffers
+    }
+
+    private var liveLatencySlowCatchUpStrideCount: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencySlowCatchUpStride : Self.liveLatencySlowCatchUpStride
+    }
+
+    private var liveLatencyFastCatchUpStrideCount: Int {
+        usesWirelessPlaybackProfile ? Self.wirelessLiveLatencyFastCatchUpStride : Self.liveLatencyFastCatchUpStride
+    }
+
     private static let initialPlaybackPrerollBuffers = 2
     private static let baseRebufferPrerollBuffers = 3
     private static let minimumEmergencyStartupPrerollBuffers = 1
@@ -1402,6 +1577,21 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private static let liveLatencyTrimTargetBuffers = 12
     private static let liveLatencySlowCatchUpStride = 36
     private static let liveLatencyFastCatchUpStride = 18
+    private static let wirelessInitialPlaybackPrerollBuffers = 6
+    private static let wirelessBaseRebufferPrerollBuffers = 6
+    private static let wirelessMinimumContinuousPlaybackBuffers = 4
+    private static let wirelessMaximumAdaptiveRebufferPrerollBuffers = 12
+    private static let wirelessHealthyFramesBeforePrerollStepDown = 120
+    private static let wirelessLateFrameThresholdMS = 150
+    private static let wirelessLivePlaybackRateTargetBuffers = 8
+    private static let wirelessLiveQueuedPlaybackHardCapBuffers = 60
+    private static let wirelessLiveQueuedPlaybackTrimTargetBuffers = 14
+    private static let wirelessLiveLatencySoftCapBuffers = 18
+    private static let wirelessLiveLatencyFastCatchUpBuffers = 28
+    private static let wirelessLiveLatencyHardCapBuffers = 44
+    private static let wirelessLiveLatencyTrimTargetBuffers = 16
+    private static let wirelessLiveLatencySlowCatchUpStride = 48
+    private static let wirelessLiveLatencyFastCatchUpStride = 24
     private static let renderFallbackDecay: Float = 0.992
     private static let renderPeakDecay: Float = 0.995
     private static let renderComfortNoiseAmplitude: Float = 0.0018
