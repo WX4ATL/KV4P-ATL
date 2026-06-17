@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.7.
+Current shared development version: 0.2.5.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -106,13 +106,6 @@ BLE central is connected. A previous squelch-gated suppression approach was
 rejected after physical open-squelch testing because it could mute receive
 audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
-
-APRS RX demodulator note
-0.2.7 keeps the restored baseline APRS decoder unchanged and adds a second
-parallel decoder path before speaker gain. The second path applies a modest
-2200 Hz space-tone peak filter so de-emphasized Bell 202 packets can be decoded
-when the 2200 Hz tone is weak relative to the 1200 Hz tone. Duplicate AX.25
-frames decoded by both paths are suppressed within a short one-second window.
 
 Test order
 1. Build firmware with BLE only on an ESP32 dev board and run a loopback test
