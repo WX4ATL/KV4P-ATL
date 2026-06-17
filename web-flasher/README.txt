@@ -17,12 +17,24 @@ How to run locally:
 1. Open `kv4p-ble-flasher.html` directly in Chrome, Edge, Brave, or another
    Chromium browser. A local web server is optional, not required.
 
-2. Connect the KV4P HT ESP32 by USB and press "Connect and flash". If the
-   browser reports "Failed to initialize", hold BOOT while clicking Install,
-   release BOOT once writing starts, and do not press RST unless the browser
-   asks you to reconnect. Close any serial monitor before flashing.
+2. Close the KV4P/ATL app, serial monitors, and anything else using the radio
+   USB serial port.
 
-3. After flashing and rebooting, use "Scan for KV4P BLE" to confirm the ESP32
+3. Connect the KV4P HT ESP32 by USB.
+
+4. Press and keep holding the ESP32/radio board's BOOT button.
+
+5. Click "Start manual BOOT flash". The page shows a final reminder dialog.
+   Keep holding BOOT, click "I am holding BOOT - start flash", then choose the
+   CP2102/USB serial port in the browser picker.
+
+6. Keep holding BOOT while the flasher says connecting, preparing, or
+   initializing. Release BOOT only after erase/write/flashing progress begins.
+
+7. If initialization fails, release BOOT, tap RST once or reconnect USB, then
+   retry from step 4.
+
+8. After flashing and rebooting, use "Scan for KV4P BLE" to confirm the ESP32
    advertises the Nordic UART-compatible service.
 
 To rebuild the firmware from current upstream KV4P source:
@@ -35,8 +47,8 @@ the self-contained `kv4p-ble-flasher.html` with the newest firmware embedded.
 The browser flasher keeps ESP Web Tools' stock Web Serial behavior. On the
 tested KV4P HT, native command-line esptool can auto-reset the board, but
 Chromium/Web Serial did not consistently enter ESP32 download mode. For that
-reason the public HTML documents the manual BOOT path instead of promising
-automatic reset.
+reason the public HTML requires and explains the manual BOOT path instead of
+promising automatic reset.
 
 Experimental auto-reset diagnostic:
 1. Open `kv4p-auto-reset-diagnostic.html` directly in Chrome, Edge, Brave, or

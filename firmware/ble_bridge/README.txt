@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.12.
+Current shared development version: 0.2.13.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -108,6 +108,12 @@ audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
 APRS Bell 202 receive note
+0.2.13 keeps the firmware behavior and binary payload aligned with 0.2.12 while
+regenerating the release manifest/flasher for the shared project version. The
+0.2.13 functional change is in the self-contained web flasher: the manual BOOT
+sequence is now the primary path, with step-by-step instructions and a pre-flash
+reminder dialog before ESP Web Tools opens the serial picker.
+
 0.2.12 removes the old toggle-driven APRS weak-signal host flag and makes the
 AFSK tap automatically look for packet-like audio. Every 20 ms window, hopped
 every 5 ms, the firmware correlates the raw receive stream against the Bell 202
@@ -160,6 +166,10 @@ Build and flasher package
    board configuration storage remains compatible.
 4. Flash with the generated self-contained web flasher:
    Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
+   Hold BOOT before starting the flash, keep holding it through the serial
+   picker and connecting/preparing phase, then release BOOT only after
+   erase/write/flashing progress begins. The page includes a reminder dialog
+   before it opens the browser serial picker.
 
 5. Test browser auto-reset behavior without flashing:
    Open web-flasher/kv4p-auto-reset-diagnostic.html directly in Chromium,
@@ -168,11 +178,10 @@ Build and flasher package
    flasher's manual-BOOT behavior. Diagnostic page version 0.2.5 and later
    closes the serial port after each run/reset.
    Public firmware releases should attach this HTML file; it embeds the latest
-   KV4P/ATL BLE firmware binary and does not require the firmware folder. If
-   Chromium cannot initialize the ESP32, hold BOOT while clicking Install and
-   release BOOT after writing starts. Native esptool auto-reset may work on the
-   same board, but Chromium/Web Serial did not reliably reproduce that reset
-   path during testing.
+   KV4P/ATL BLE firmware binary and does not require the firmware folder.
+   Native esptool auto-reset may work on the same board, but Chromium/Web
+   Serial did not reliably reproduce that reset path during testing, so the
+   public flasher intentionally uses the manual BOOT sequence.
 
 Power and CPU profiling
 See POWER_PROFILING_NOTES.txt for the 0.2.0 USB diagnostic findings, including

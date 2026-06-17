@@ -14,6 +14,7 @@ binary are embedded into one downloadable file.
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KV4P HT BLE Flasher</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2309636b'/%3E%3Cpath d='M14 20h28a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H14z' fill='white'/%3E%3Ccircle cx='42' cy='30' r='3' fill='%2309636b'/%3E%3Cpath d='M18 26h16M18 32h12M18 38h16' stroke='%2309636b' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <script type="module">
 __ESP_WEB_TOOLS_MODULE__
   </script>
@@ -195,6 +196,28 @@ __ESP_WEB_TOOLS_MODULE__
       color: var(--warn);
     }
 
+    .steps {
+      margin: 12px 0 0;
+      padding-left: 1.25rem;
+      color: var(--muted);
+    }
+
+    .steps li {
+      margin: 0 0 8px;
+    }
+
+    .callout {
+      border: 1px solid color-mix(in srgb, var(--warn) 42%, var(--line));
+      background: color-mix(in srgb, var(--warn) 9%, var(--panel));
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--muted);
+    }
+
+    .callout strong {
+      color: var(--ink);
+    }
+
     .flash-wrap {
       display: grid;
       justify-items: start;
@@ -242,6 +265,35 @@ __ESP_WEB_TOOLS_MODULE__
       font-size: 0.92rem;
     }
 
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.54);
+    }
+
+    .dialog {
+      width: min(560px, 100%);
+      max-height: min(760px, calc(100vh - 32px));
+      overflow: auto;
+      background: var(--panel);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 22px 56px rgba(0, 0, 0, 0.36);
+      padding: 20px;
+    }
+
+    .dialog-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
     .sources {
       margin-top: 20px;
       font-size: 0.92rem;
@@ -273,6 +325,10 @@ __ESP_WEB_TOOLS_MODULE__
         grid-template-columns: 1fr;
         gap: 2px;
       }
+
+      .dialog-actions {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -281,8 +337,16 @@ __ESP_WEB_TOOLS_MODULE__
     <header>
       <section class="intro">
         <h1>KV4P HT BLE Flasher</h1>
-        <p>This single HTML file flashes a KV4P HT ESP32 with KV4P/ATL BLE bridge firmware. The firmware binary and flashing logic are embedded, so no separate manifest, firmware folder, or web server is required for the KV4P/ATL firmware option.</p>
-        <p class="small">Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS. Connect the radio ESP32 by USB, then flash the embedded package. If initialization fails, hold BOOT while clicking Install, release BOOT once writing starts, and do not press RST unless the browser asks you to reconnect.</p>
+        <h2>Manual BOOT flashing steps</h2>
+        <ol class="steps">
+          <li>Use Chrome, Edge, Brave, or another Chromium browser on macOS, Windows, Linux, or ChromeOS.</li>
+          <li>Close the KV4P/ATL app, serial monitors, and anything else using the radio USB serial port.</li>
+          <li>Plug the KV4P HT ESP32 into this computer by USB-C or USB.</li>
+          <li>Press and keep holding the radio board's <strong>BOOT</strong> button before starting the flash.</li>
+          <li>Click <strong>Start manual BOOT flash</strong>, confirm the BOOT reminder, then choose the CP2102/USB serial port in the browser picker.</li>
+          <li>Keep holding <strong>BOOT</strong> until the page shows erase/write/flashing progress. Release BOOT only after writing has started.</li>
+          <li>When flashing finishes, disconnect and reconnect USB or tap RST once, then use <strong>Scan for KV4P BLE</strong>.</li>
+        </ol>
       </section>
       <div class="photo" aria-hidden="true">
         <img src="__KV4P_RADIO_GLYPH_DATA_URI__" alt="">
@@ -315,9 +379,13 @@ __ESP_WEB_TOOLS_MODULE__
           </div>
         </dl>
         <div id="flashStatus" class="status">Preparing embedded firmware package...</div>
+        <div class="callout">
+          <strong>BOOT is required for this browser flasher.</strong>
+          Hold BOOT before the serial picker opens. Keep holding it while selecting the port and while the flasher says it is connecting or preparing.
+        </div>
         <div class="flash-wrap">
           <esp-web-install-button id="flashButton">
-            <button id="activateButton" slot="activate" disabled>Connect and flash</button>
+            <button id="activateButton" slot="activate" disabled>Start manual BOOT flash</button>
           </esp-web-install-button>
         </div>
         <p class="small">This writes a merged ESP32 image at offset <code>0x0</code>, matching the generated release manifest. Existing KV4P board configuration storage is preserved by the firmware layout. Close any serial monitor before flashing.</p>
@@ -343,6 +411,25 @@ __ESP_WEB_TOOLS_MODULE__
     </section>
   </main>
 
+  <div id="bootDialog" class="dialog-backdrop" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="bootDialogTitle">
+      <h2 id="bootDialogTitle">Hold BOOT before choosing the port</h2>
+      <p>The ESP32 must be in serial download mode before ESP Web Tools can initialize it. Keep the BOOT button held through the next browser serial picker.</p>
+      <ol class="steps">
+        <li>Press and hold <strong>BOOT</strong> now.</li>
+        <li>While still holding BOOT, click <strong>I am holding BOOT - start flash</strong>.</li>
+        <li>Choose the KV4P HT CP2102/USB serial port in the browser picker.</li>
+        <li>Do not release BOOT while the flasher says connecting, preparing, or initializing.</li>
+        <li>Release BOOT only after erase/write/flashing progress begins.</li>
+      </ol>
+      <p class="small">If initialization still fails, release BOOT, tap RST once or reconnect USB, then retry from the first BOOT step.</p>
+      <div class="dialog-actions">
+        <button id="bootCancelButton" type="button" class="secondary">Cancel</button>
+        <button id="bootConfirmButton" type="button">I am holding BOOT - start flash</button>
+      </div>
+    </section>
+  </div>
+
   <script>
     const embeddedFirmware = {
       name: "__FIRMWARE_FILENAME__",
@@ -357,11 +444,15 @@ __ESP_WEB_TOOLS_MODULE__
     const flashStatus = document.getElementById("flashStatus");
     const flashButton = document.getElementById("flashButton");
     const activateButton = document.getElementById("activateButton");
+    const bootDialog = document.getElementById("bootDialog");
+    const bootCancelButton = document.getElementById("bootCancelButton");
+    const bootConfirmButton = document.getElementById("bootConfirmButton");
     const bleCheck = document.getElementById("bleCheck");
     const bleStatus = document.getElementById("bleStatus");
 
     let firmwareBlobUrl = null;
     let manifestBlobUrl = null;
+    let manualBootConfirmed = false;
 
     function setStatus(text, tone = "") {
       flashStatus.textContent = text;
@@ -412,10 +503,32 @@ __ESP_WEB_TOOLS_MODULE__
       try {
         flashButton.setAttribute("manifest", buildEmbeddedManifestUrl());
         activateButton.disabled = false;
-        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. This file includes the firmware binary and does not need the firmware folder.`, "good");
+        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
       } catch (error) {
         setStatus(`Embedded firmware package could not be prepared: ${error.message}`, "warn");
       }
+    }
+
+    function showBootDialog() {
+      bootDialog.hidden = false;
+      bootConfirmButton.focus();
+      setStatus("Hold BOOT now. Keep holding it through the serial picker and release only after writing starts.", "warn");
+    }
+
+    function hideBootDialog() {
+      bootDialog.hidden = true;
+    }
+
+    function startManualBootFlash(event) {
+      if (manualBootConfirmed) {
+        manualBootConfirmed = false;
+        setStatus("Starting browser flasher. Keep holding BOOT until erase/write progress begins.", "warn");
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showBootDialog();
     }
 
     async function scanForBle() {
@@ -443,6 +556,23 @@ __ESP_WEB_TOOLS_MODULE__
     window.addEventListener("pagehide", () => {
       if (firmwareBlobUrl) URL.revokeObjectURL(firmwareBlobUrl);
       if (manifestBlobUrl) URL.revokeObjectURL(manifestBlobUrl);
+    });
+
+    activateButton.addEventListener("click", startManualBootFlash, { capture: true });
+    bootCancelButton.addEventListener("click", () => {
+      hideBootDialog();
+      setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
+    });
+    bootConfirmButton.addEventListener("click", () => {
+      hideBootDialog();
+      manualBootConfirmed = true;
+      activateButton.click();
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !bootDialog.hidden) {
+        hideBootDialog();
+        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
+      }
     });
 
     bleCheck.addEventListener("click", scanForBle);
