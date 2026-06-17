@@ -63,14 +63,10 @@ struct AppSettings: Codable, Equatable {
     var min70cmTx = "420"
     var max70cmTx = "450"
     var micGainBoost = "Normal"
-    var rxAudioBoost = "High"
     var blePowerDefaultMigrated = false
     var rxPowerSaveEnabled = false
     var rxPowerSaveProfile = "Balanced"
-    var aprsWeakSignalRxEnabled = false
     var aprsRxMuteEnabled = false
-    var rxNoiseReductionEnabled = false
-    var rxNoiseReductionStrength = "Balanced"
 
     init() {}
 
@@ -105,14 +101,10 @@ struct AppSettings: Codable, Equatable {
         min70cmTx = try container.decodeIfPresent(String.self, forKey: .min70cmTx) ?? min70cmTx
         max70cmTx = try container.decodeIfPresent(String.self, forKey: .max70cmTx) ?? max70cmTx
         micGainBoost = try container.decodeIfPresent(String.self, forKey: .micGainBoost) ?? micGainBoost
-        rxAudioBoost = try container.decodeIfPresent(String.self, forKey: .rxAudioBoost) ?? rxAudioBoost
         blePowerDefaultMigrated = try container.decodeIfPresent(Bool.self, forKey: .blePowerDefaultMigrated) ?? blePowerDefaultMigrated
         rxPowerSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxPowerSaveEnabled) ?? rxPowerSaveEnabled
         rxPowerSaveProfile = try container.decodeIfPresent(String.self, forKey: .rxPowerSaveProfile) ?? rxPowerSaveProfile
-        aprsWeakSignalRxEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsWeakSignalRxEnabled) ?? aprsWeakSignalRxEnabled
         aprsRxMuteEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsRxMuteEnabled) ?? aprsRxMuteEnabled
-        rxNoiseReductionEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxNoiseReductionEnabled) ?? rxNoiseReductionEnabled
-        rxNoiseReductionStrength = try container.decodeIfPresent(String.self, forKey: .rxNoiseReductionStrength) ?? rxNoiseReductionStrength
     }
 }
 

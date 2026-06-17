@@ -340,7 +340,6 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(settings.directTxFrequency, "146.5200")
         XCTAssertEqual(settings.directRxTone, "None")
         XCTAssertEqual(settings.directTxTone, "None")
-        XCTAssertEqual(settings.rxAudioBoost, "High")
         XCTAssertFalse(settings.highPower)
         XCTAssertFalse(settings.blePowerDefaultMigrated)
         XCTAssertFalse(settings.rxPowerSaveEnabled)

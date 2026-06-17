@@ -94,11 +94,7 @@ final class AppState: ObservableObject {
             store.saveSettings(loadedSettings)
         }
         settings = loadedSettings
-        audio.updateGainProfile(rxBoost: loadedSettings.rxAudioBoost, micBoost: loadedSettings.micGainBoost)
-        audio.updateReceiveProcessing(
-            noiseReductionEnabled: loadedSettings.rxNoiseReductionEnabled,
-            strength: loadedSettings.rxNoiseReductionStrength
-        )
+        audio.updateGainProfile(micBoost: loadedSettings.micGainBoost)
         memories = store.loadMemories()
         let retentionCutoff = Date().addingTimeInterval(-max(60, loadedSettings.packetRetentionSeconds))
         messages = store.loadMessages().filter { $0.timestamp >= retentionCutoff }
@@ -270,19 +266,10 @@ final class AppState: ObservableObject {
         settings.beaconIntervalSeconds = min(86_400, max(60, settings.beaconIntervalSeconds))
         settings.packetRetentionSeconds = min(604_800, max(60, settings.packetRetentionSeconds))
         store.saveSettings(settings)
-        audio.updateGainProfile(rxBoost: settings.rxAudioBoost, micBoost: settings.micGainBoost)
-        audio.updateReceiveProcessing(
-            noiseReductionEnabled: settings.rxNoiseReductionEnabled,
-            strength: settings.rxNoiseReductionStrength
-        )
+        audio.updateGainProfile(micBoost: settings.micGainBoost)
         pruneStoredAPRSPackets()
         configureAPRSBeaconing()
         applySettingsToRadio()
-    }
-
-    func resetReceiveNoiseProfile() {
-        audio.resetReceiveNoiseProfile()
-        lastDebugLine = "RX noise profile reset; leave squelch open on static for a moment so the DSP can relearn the floor."
     }
 
     func addMemory(_ memory: ChannelMemory) {
@@ -736,10 +723,6 @@ final class AppState: ObservableObject {
                 flags |= RadioFlags.rxPowerSaveMaximum
             }
         }
-        if settings.aprsWeakSignalRxEnabled {
-            flags |= RadioFlags.aprsWeakRx
-        }
-
         let state = HostDesiredState(
             sequence: 0,
             memoryId: memoryId,
@@ -1042,7 +1025,7 @@ final class AppState: ObservableObject {
         rxAudioUIUpdateGate: RXAudioUIUpdateGate
     ) {
         let speakerMuted = rxSpeakerMutedForAPRSFrequency
-        let softwareSquelchLevel = settings.aprsWeakSignalRxEnabled ? settings.squelch : 0
+        let softwareSquelchLevel = 0
         let playbackMayBeMutedByPolicy = speakerMuted || softwareSquelchLevel > 0
         audioEngine.playReceivedFrameAsync(
             frame,
@@ -1608,5 +1591,4 @@ enum RadioFlags {
     static let enableStatusReports: UInt16 = 1 << 12
     static let rxPowerSave: UInt16 = 1 << 13
     static let rxPowerSaveMaximum: UInt16 = 1 << 14
-    static let aprsWeakRx: UInt16 = 1 << 15
 }

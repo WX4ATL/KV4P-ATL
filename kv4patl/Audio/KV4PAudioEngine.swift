@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 @preconcurrency import AVFoundation
-import Accelerate
 import Foundation
 
 enum KV4PMicrophonePermissionState: String {
@@ -99,20 +98,12 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private var latencyCatchUpDroppedSamples = 0
     private var mode: AudioMode = .stopped
     private var configuredSessionKind: AudioSessionKind?
-    private var playbackGain: Float = 1.55
+    private var playbackGain: Float = KV4PAudioEngine.fixedPlaybackGain
     private var captureGain: Float = 1.35
-    private var rxNoiseReductionEnabled = false
-    private var rxNoiseReductionStrength = "Balanced"
     private var rxNoiseFloorRMS: Float = 0.02
-    private var rxNoiseReductionSmoothedGain: Float = 1.0
-    private let rxNoiseFFTSetup = vDSP_create_fftsetup(KV4PAudioEngine.noiseReductionFFTLog2N, FFTRadix(kFFTRadix2))
-    private var rxNoisePowerProfile = [Float](repeating: 0.0004, count: KV4PAudioEngine.noiseReductionBinCount)
-    private var rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: KV4PAudioEngine.noiseReductionBinCount)
-    private var rxNoiseProfileFrameCount = 0
     private var rxSoftwareSquelchHangFrames = 0
     private var rxSpeakerMutedFrames = 0
     private var rxSoftwareSquelchMutedFrames = 0
-    private var rxNoiseReducedFrames = 0
     private var rxProcessingSummary = "speaker open"
 
     init(codec: VoiceCodec = IMAADPCMCodec()) {
@@ -131,9 +122,6 @@ final class KV4PAudioEngine: @unchecked Sendable {
     deinit {
         if let routeChangeObserver {
             NotificationCenter.default.removeObserver(routeChangeObserver)
-        }
-        if let rxNoiseFFTSetup {
-            vDSP_destroy_fftsetup(rxNoiseFFTSetup)
         }
     }
 
@@ -341,34 +329,11 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
-    func updateGainProfile(rxBoost: String, micBoost: String) {
+    func updateGainProfile(micBoost: String) {
         syncOnWorkQueue {
-            playbackGain = Self.gainMultiplier(for: rxBoost, normal: 1.35, high: 1.65)
+            playbackGain = Self.fixedPlaybackGain
             captureGain = Self.gainMultiplier(for: micBoost, normal: 1.35, high: 1.75)
-            logAudio("gain profile rx=\(rxBoost) \(String(format: "%.2f", playbackGain))x mic=\(micBoost) \(String(format: "%.2f", captureGain))x")
-        }
-    }
-
-    func updateReceiveProcessing(noiseReductionEnabled: Bool, strength: String) {
-        syncOnWorkQueue {
-            rxNoiseReductionEnabled = noiseReductionEnabled
-            rxNoiseReductionStrength = strength
-            if !noiseReductionEnabled {
-                rxNoiseReductionSmoothedGain = 1.0
-                rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
-            }
-            logAudio("receive speaker processing noiseReduction=\(noiseReductionEnabled) strength=\(strength)")
-        }
-    }
-
-    func resetReceiveNoiseProfile() {
-        syncOnWorkQueue {
-            rxNoisePowerProfile = [Float](repeating: max(rxNoiseFloorRMS * rxNoiseFloorRMS, 0.0004), count: Self.noiseReductionBinCount)
-            rxNoiseReductionPreviousGains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
-            rxNoiseProfileFrameCount = 0
-            rxNoiseReductionSmoothedGain = 1.0
-            rxProcessingSummary = "noise profile reset; listening for static"
-            logAudio("receive noise profile reset")
+            logAudio("gain profile rx=fixed \(String(format: "%.2f", playbackGain))x mic=\(micBoost) \(String(format: "%.2f", captureGain))x")
         }
     }
 
@@ -706,7 +671,6 @@ final class KV4PAudioEngine: @unchecked Sendable {
             ? isLikelyNoiseOnly(rms: rms, peak: peak)
             : (!squelchOpen || isLikelyNoiseOnly(rms: rms, peak: peak))
         updateReceiveNoiseFloor(rms: rms, likelyNoiseOnly: likelyNoiseOnly)
-        updateReceiveNoiseSpectrum(samples, likelyNoiseOnly: likelyNoiseOnly)
 
         if speakerMuted {
             rxSpeakerMutedFrames += 1
@@ -718,13 +682,6 @@ final class KV4PAudioEngine: @unchecked Sendable {
             rxSoftwareSquelchMutedFrames += 1
             rxProcessingSummary = "squelch closed \(rxSoftwareSquelchMutedFrames), rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS))"
             return RXSpeakerProcessingResult(samples: samples, shouldPlay: false, peak: peak, reason: "rx-software-squelch")
-        }
-
-        if rxNoiseReductionEnabled {
-            let reduced = applyReceiveNoiseReduction(to: samples, rms: rms)
-            rxNoiseReducedFrames += 1
-            rxProcessingSummary = "speaker open, NR \(rxNoiseReductionStrength), rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS)), gain \(formatPeak(rxNoiseReductionSmoothedGain))"
-            return RXSpeakerProcessingResult(samples: reduced, shouldPlay: true, peak: peak, reason: "rx-frame-noise-reduced")
         }
 
         rxProcessingSummary = "speaker open, rms \(formatPeak(rms)), noise \(formatPeak(rxNoiseFloorRMS))"
@@ -778,212 +735,6 @@ final class KV4PAudioEngine: @unchecked Sendable {
             alpha = 0.003
         }
         rxNoiseFloorRMS = rxNoiseFloorRMS * (1.0 - alpha) + sample * alpha
-    }
-
-    private func applyReceiveNoiseReduction(to samples: [Float], rms: Float) -> [Float] {
-        guard !samples.isEmpty else { return samples }
-        guard let rxNoiseFFTSetup, rxNoiseProfileFrameCount >= Self.minimumNoiseProfileFrames else {
-            return samples
-        }
-
-        var padded = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
-        let copyCount = min(samples.count, padded.count)
-        padded.replaceSubrange(0..<copyCount, with: samples.prefix(copyCount))
-
-        var real = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
-        var imaginary = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
-        padded.withUnsafeBufferPointer { input in
-            input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexInput in
-                real.withUnsafeMutableBufferPointer { realBuffer in
-                    imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
-                        var split = DSPSplitComplex(
-                            realp: realBuffer.baseAddress!,
-                            imagp: imaginaryBuffer.baseAddress!
-                        )
-                        vDSP_ctoz(complexInput, 2, &split, 1, vDSP_Length(Self.noiseReductionFFTHalfSize))
-                        vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_FORWARD))
-                    }
-                }
-            }
-        }
-
-        let gains = spectralNoiseReductionGains(real: real, imaginary: imaginary)
-        if Self.noiseReductionFFTHalfSize > 1 {
-            for bin in 1..<Self.noiseReductionFFTHalfSize {
-                let gain = gains[bin]
-                real[bin] *= gain
-                imaginary[bin] *= gain
-            }
-        }
-        real[0] *= gains[0]
-        imaginary[0] *= gains[Self.noiseReductionFFTHalfSize]
-
-        var output = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
-        real.withUnsafeMutableBufferPointer { realBuffer in
-            imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
-                var split = DSPSplitComplex(
-                    realp: realBuffer.baseAddress!,
-                    imagp: imaginaryBuffer.baseAddress!
-                )
-                vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_INVERSE))
-                output.withUnsafeMutableBufferPointer { outputBuffer in
-                    outputBuffer.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexOutput in
-                        vDSP_ztoc(&split, 1, complexOutput, 2, vDSP_Length(Self.noiseReductionFFTHalfSize))
-                    }
-                }
-            }
-        }
-
-        var scale = Float(1.0 / Float(Self.noiseReductionFFTSize * 2))
-        vDSP_vsmul(output, 1, &scale, &output, 1, vDSP_Length(output.count))
-        rxNoiseReductionSmoothedGain = gains.reduce(Float(0), +) / Float(gains.count)
-        return Array(output.prefix(samples.count))
-    }
-
-    private func updateReceiveNoiseSpectrum(_ samples: [Float], likelyNoiseOnly: Bool) {
-        guard !samples.isEmpty else { return }
-        var padded = [Float](repeating: 0, count: Self.noiseReductionFFTSize)
-        let copyCount = min(samples.count, padded.count)
-        padded.replaceSubrange(0..<copyCount, with: samples.prefix(copyCount))
-        guard let power = noiseSpectrumPower(for: padded) else { return }
-
-        let downwardAlpha: Float = 0.18
-        let upwardNoiseAlpha: Float = rxNoiseProfileFrameCount < Self.minimumNoiseProfileFrames ? 0.22 : 0.025
-        let upwardSignalAlpha: Float = 0.001
-        for bin in 0..<Self.noiseReductionBinCount {
-            let observed = max(power[bin], Self.minimumSpectralPower)
-            let current = rxNoisePowerProfile[bin]
-            let alpha: Float
-            if observed < current {
-                alpha = downwardAlpha
-            } else {
-                alpha = likelyNoiseOnly ? upwardNoiseAlpha : upwardSignalAlpha
-            }
-            rxNoisePowerProfile[bin] = current * (1.0 - alpha) + observed * alpha
-        }
-        if likelyNoiseOnly {
-            rxNoiseProfileFrameCount = min(Self.maximumNoiseProfileFrameCount, rxNoiseProfileFrameCount + 1)
-        }
-    }
-
-    private func noiseSpectrumPower(for paddedSamples: [Float]) -> [Float]? {
-        guard let rxNoiseFFTSetup else { return nil }
-        var real = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
-        var imaginary = [Float](repeating: 0, count: Self.noiseReductionFFTHalfSize)
-        paddedSamples.withUnsafeBufferPointer { input in
-            input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.noiseReductionFFTHalfSize) { complexInput in
-                real.withUnsafeMutableBufferPointer { realBuffer in
-                    imaginary.withUnsafeMutableBufferPointer { imaginaryBuffer in
-                        var split = DSPSplitComplex(
-                            realp: realBuffer.baseAddress!,
-                            imagp: imaginaryBuffer.baseAddress!
-                        )
-                        vDSP_ctoz(complexInput, 2, &split, 1, vDSP_Length(Self.noiseReductionFFTHalfSize))
-                        vDSP_fft_zrip(rxNoiseFFTSetup, &split, 1, Self.noiseReductionFFTLog2N, FFTDirection(FFT_FORWARD))
-                    }
-                }
-            }
-        }
-        return packedRealFFTPower(real: real, imaginary: imaginary)
-    }
-
-    private func packedRealFFTPower(real: [Float], imaginary: [Float]) -> [Float] {
-        var power = [Float](repeating: 0, count: Self.noiseReductionBinCount)
-        power[0] = real[0] * real[0]
-        power[Self.noiseReductionFFTHalfSize] = imaginary[0] * imaginary[0]
-        guard Self.noiseReductionFFTHalfSize > 1 else { return power }
-        for bin in 1..<Self.noiseReductionFFTHalfSize {
-            power[bin] = real[bin] * real[bin] + imaginary[bin] * imaginary[bin]
-        }
-        return power
-    }
-
-    private func spectralNoiseReductionGains(real: [Float], imaginary: [Float]) -> [Float] {
-        let power = packedRealFFTPower(real: real, imaginary: imaginary)
-        let parameters = noiseReductionStrengthParameters()
-        var gains = [Float](repeating: 1.0, count: Self.noiseReductionBinCount)
-        for bin in 0..<Self.noiseReductionBinCount {
-            let observed = max(power[bin], Self.minimumSpectralPower)
-            let noise = max(rxNoisePowerProfile[bin], Self.minimumSpectralPower)
-            let frequency = Float(bin) * Float(KV4PVoice.engineSampleRate) / Float(Self.noiseReductionFFTSize)
-            let oversubtraction = spectralOversubtraction(forFrequency: frequency, base: parameters.oversubtraction)
-            let residualPower = max(observed - noise * oversubtraction, observed * parameters.minimumPowerFloor)
-            let rawGain = sqrt(max(Self.minimumSpectralPower, residualPower) / observed)
-            let protectedGain = protectedSignalGain(
-                rawGain,
-                frequency: frequency,
-                signalToNoise: observed / noise,
-                parameters: parameters
-            )
-            let previous = rxNoiseReductionPreviousGains[bin]
-            let smoothing: Float = protectedGain > previous ? 0.52 : 0.18
-            let smoothed = previous * (1.0 - smoothing) + protectedGain * smoothing
-            let finalGain = min(1.0, max(parameters.minimumAmplitudeGain, smoothed))
-            gains[bin] = finalGain
-            rxNoiseReductionPreviousGains[bin] = finalGain
-        }
-        return gains
-    }
-
-    private func spectralOversubtraction(forFrequency frequency: Float, base: Float) -> Float {
-        switch frequency {
-        case 0..<180:
-            return base * 1.35
-        case 1_050...1_350, 2_000...2_400:
-            return base * 0.65
-        case 300...3_200:
-            return base * 0.82
-        case 4_000...Float(KV4PVoice.engineSampleRate / 2):
-            return base * 1.25
-        default:
-            return base
-        }
-    }
-
-    private func protectedSignalGain(
-        _ gain: Float,
-        frequency: Float,
-        signalToNoise: Float,
-        parameters: RXNoiseReductionParameters
-    ) -> Float {
-        var protected = gain
-        if (1_050...1_350).contains(frequency) || (2_000...2_400).contains(frequency) {
-            if signalToNoise >= 1.18 {
-                protected = max(protected, parameters.afskPreserveGain)
-            }
-        } else if (300...3_200).contains(frequency), signalToNoise >= 1.35 {
-            protected = max(protected, parameters.voicePreserveGain)
-        }
-        return protected
-    }
-
-    private func noiseReductionStrengthParameters() -> RXNoiseReductionParameters {
-        switch rxNoiseReductionStrength {
-        case "Light":
-            return RXNoiseReductionParameters(
-                oversubtraction: 0.70,
-                minimumPowerFloor: 0.42,
-                minimumAmplitudeGain: 0.58,
-                voicePreserveGain: 0.82,
-                afskPreserveGain: 0.88
-            )
-        case "Strong":
-            return RXNoiseReductionParameters(
-                oversubtraction: 1.35,
-                minimumPowerFloor: 0.08,
-                minimumAmplitudeGain: 0.24,
-                voicePreserveGain: 0.62,
-                afskPreserveGain: 0.74
-            )
-        default:
-            return RXNoiseReductionParameters(
-                oversubtraction: 1.05,
-                minimumPowerFloor: 0.18,
-                minimumAmplitudeGain: 0.38,
-                voicePreserveGain: 0.72,
-                afskPreserveGain: 0.82
-            )
-        }
     }
 
     private func makePlaybackBuffer(samples: [Float]) -> AVAudioPCMBuffer? {
@@ -1858,13 +1609,6 @@ final class KV4PAudioEngine: @unchecked Sendable {
         var reason: String
     }
 
-    private struct RXNoiseReductionParameters {
-        var oversubtraction: Float
-        var minimumPowerFloor: Float
-        var minimumAmplitudeGain: Float
-        var voicePreserveGain: Float
-        var afskPreserveGain: Float
-    }
 
     private var usesWirelessPlaybackProfile: Bool {
         playbackOutputMode == .sourceRing
@@ -1944,13 +1688,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     private static let lowWatermarkConcealmentFrames = 1
     private static let maximumConsecutiveConcealmentBursts = 4
     private static let softwareSquelchHangFrameCount = 14
-    private static let noiseReductionFFTSize = 1_024
-    private static let noiseReductionFFTHalfSize = noiseReductionFFTSize / 2
-    private static let noiseReductionBinCount = noiseReductionFFTHalfSize + 1
-    private static let noiseReductionFFTLog2N = vDSP_Length(10)
-    private static let minimumNoiseProfileFrames = 24
-    private static let maximumNoiseProfileFrameCount = 20_000
-    private static let minimumSpectralPower: Float = 1.0e-10
+    private static let fixedPlaybackGain: Float = 1.55
     private static let maximumScheduledPlaybackBuffers = 6
     private static let maximumQueuedPlaybackBuffers = 18
     private static let lateFrameThresholdMS = 90
