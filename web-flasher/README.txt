@@ -28,14 +28,19 @@ How to run locally:
    Keep holding BOOT, click "I am holding BOOT - start flash", then choose the
    CP2102/USB serial port in the browser picker.
 
-6. Keep holding BOOT while the flasher says connecting, preparing, or
-   initializing. The large ESP Web Tools install box is normal. Release BOOT
-   only when the page's top banner says "You may now release the BOOT button."
+6. Keep holding BOOT through the serial picker, the ESP Web Tools install
+   confirmation, and the initializing stage. The large ESP Web Tools install
+   box is normal.
 
-7. If initialization fails, release BOOT, tap RST once or reconnect USB, then
+7. Release BOOT when the page's top banner says "You may now release the BOOT
+   button." This should happen when the ESP Web Tools install box shows
+   Erasing or visible Installing progress, such as a percentage. You do not
+   need to hold BOOT for the whole flash.
+
+8. If initialization fails, release BOOT, tap RST once or reconnect USB, then
    retry from step 4.
 
-8. After flashing and rebooting, use "Scan for KV4P BLE" to confirm the ESP32
+9. After flashing and rebooting, use "Scan for KV4P BLE" to confirm the ESP32
    advertises the Nordic UART-compatible service.
 
 To rebuild the firmware from current upstream KV4P source:

@@ -387,7 +387,8 @@ __ESP_WEB_TOOLS_MODULE__
           <li>Plug the KV4P HT ESP32 into this computer by USB-C or USB.</li>
           <li>Press and keep holding the radio board's <strong>BOOT</strong> button before starting the flash.</li>
           <li>Click <strong>Start manual BOOT flash</strong>, confirm the BOOT reminder, then choose the CP2102/USB serial port in the browser picker.</li>
-          <li>Keep holding <strong>BOOT</strong> until the top banner says <strong>You may now release the BOOT button</strong>. The large ESP Web Tools install box is normal.</li>
+          <li>Keep holding <strong>BOOT</strong> while ESP Web Tools is selecting the port, confirming the install, or initializing. The large ESP Web Tools install box is normal.</li>
+          <li>Release <strong>BOOT</strong> as soon as the top banner says <strong>You may now release the BOOT button</strong>. This should happen when the ESP Web Tools install box shows Erasing or visible Installing progress.</li>
           <li>When flashing finishes, disconnect and reconnect USB or tap RST once, then use <strong>Scan for KV4P BLE</strong>.</li>
         </ol>
       </section>
@@ -424,7 +425,7 @@ __ESP_WEB_TOOLS_MODULE__
         <div id="flashStatus" class="status">Preparing embedded firmware package...</div>
         <div class="callout">
           <strong>BOOT is required for this browser flasher.</strong>
-          Hold BOOT before the serial picker opens. Keep holding it through port selection, confirmation, and initialization. Release only when the top banner says you may release BOOT.
+          Hold BOOT before the serial picker opens. Keep holding it through port selection, install confirmation, and initialization. Release as soon as the top banner says you may release BOOT.
         </div>
         <div class="flash-wrap">
           <esp-web-install-button id="flashButton">
@@ -462,8 +463,8 @@ __ESP_WEB_TOOLS_MODULE__
         <li>Press and hold <strong>BOOT</strong> now.</li>
         <li>While still holding BOOT, click <strong>I am holding BOOT - start flash</strong>.</li>
         <li>Choose the KV4P HT CP2102/USB serial port in the browser picker.</li>
-        <li>Do not release BOOT while the flasher says connecting, preparing, or initializing.</li>
-        <li>Release BOOT only when the top banner says <strong>You may now release the BOOT button</strong>.</li>
+        <li>Keep holding BOOT through the ESP Web Tools install confirmation and initializing stage.</li>
+        <li>Release BOOT when the top banner says <strong>You may now release the BOOT button</strong>. That should be when the install box shows Erasing or visible Installing progress, not at the end of flashing.</li>
       </ol>
       <p class="small">If initialization still fails, release BOOT, tap RST once or reconnect USB, then retry from the first BOOT step.</p>
       <div class="dialog-actions">
@@ -565,7 +566,7 @@ __ESP_WEB_TOOLS_MODULE__
     function showBootDialog() {
       bootDialog.hidden = false;
       bootConfirmButton.focus();
-      setStatus("Hold BOOT now. Keep holding it through the serial picker and release only after writing starts.", "warn");
+      setStatus("Hold BOOT now. Keep holding through install confirmation and initialization; release when the green banner says to release.", "warn");
     }
 
     function hideBootDialog() {
@@ -611,11 +612,13 @@ __ESP_WEB_TOOLS_MODULE__
     }
 
     function updateBootReleaseFromInstaller() {
-      const installerText = collectShadowText(flashButton).toLowerCase();
+      const installerText = collectShadowText(document.body).toLowerCase();
 
       if (!installerText) {
         return;
       }
+
+      const installingWithProgress = installerText.includes("installing") && /(?:^|\D)\d{1,3}%/.test(installerText);
 
       if (installerText.includes("all done") || installerText.includes("wrapping up")) {
         setBootReleaseOverlay("done", "Flash is finishing", "BOOT can stay released. Wait for the install box to complete, then reboot or reconnect the radio.");
@@ -629,15 +632,15 @@ __ESP_WEB_TOOLS_MODULE__
         return;
       }
 
-      if (installerText.includes("writing progress") || installerText.includes("erasing device") || installerText.includes("device erased")) {
-        setBootReleaseOverlay("release", "You may now release the BOOT button", "Erase/write progress has started. Leave the page visible until flashing finishes.");
-        setStatus("You may now release the BOOT button. Flashing is underway.", "good");
+      if (installerText.includes("erasing") || installerText.includes("writing progress") || installingWithProgress) {
+        setBootReleaseOverlay("release", "You may now release the BOOT button", "Erasing or install progress is visible, so the ESP32 bootloader is ready. Leave the page visible until flashing finishes.");
+        setStatus("You may now release the BOOT button. Erasing or install progress is visible.", "good");
         return;
       }
 
-      if (installerText.includes("installing") || installerText.includes("preparing installation") || installerText.includes("initializing") || installerText.includes("confirm installation")) {
-        setBootReleaseOverlay("hold", "Keep holding BOOT", "Do not release yet. Wait for this banner to turn green and say you may release BOOT.");
-        setStatus("Keep holding BOOT. Waiting for the green release banner.", "warn");
+      if (installerText.includes("initializing") || installerText.includes("confirm installation") || installerText.includes("preparing installation") || installerText.includes("installation prepared") || installerText.includes("installing")) {
+        setBootReleaseOverlay("hold", "Keep holding BOOT", "This is the part where BOOT matters. Release as soon as this banner turns green.");
+        setStatus("Keep holding BOOT during install initialization.", "warn");
       }
     }
 
@@ -649,9 +652,9 @@ __ESP_WEB_TOOLS_MODULE__
     function startManualBootFlash(event) {
       if (manualBootConfirmed) {
         manualBootConfirmed = false;
-        setBootReleaseOverlay("hold", "Keep holding BOOT", "Hold BOOT through port selection, confirmation, and initialization. Wait for the green release message.");
+        setBootReleaseOverlay("hold", "Keep holding BOOT", "Hold through port selection, install confirmation, and initialization. Release when this banner turns green.");
         startBootReleaseWatch();
-        setStatus("Starting browser flasher. Keep holding BOOT until the top banner says you may release it.", "warn");
+        setStatus("Starting browser flasher. Keep holding BOOT only until install starts and the banner turns green.", "warn");
         return;
       }
 
@@ -695,7 +698,7 @@ __ESP_WEB_TOOLS_MODULE__
     });
     bootConfirmButton.addEventListener("click", () => {
       hideBootDialog();
-      setBootReleaseOverlay("hold", "Keep holding BOOT", "Keep holding while the browser serial picker opens and while ESP Web Tools initializes.");
+      setBootReleaseOverlay("hold", "Keep holding BOOT", "Keep holding while the serial picker opens, during install confirmation, and during initialization.");
       manualBootConfirmed = true;
       activateButton.click();
     });

@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.13.
+Current shared development version: 0.2.14.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -108,13 +108,21 @@ audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
 APRS Bell 202 receive note
+0.2.14 keeps the firmware behavior and binary payload aligned with 0.2.12 while
+regenerating the release manifest/flasher for the shared project version. The
+0.2.14 functional change is in the web flasher instructions: the BOOT button is
+held through serial selection, install confirmation, and initialization only.
+The release banner now turns green when the ESP Web Tools install box shows
+Erasing or visible Installing progress, so the user is not asked to hold BOOT
+for the whole flash.
+
 0.2.13 keeps the firmware behavior and binary payload aligned with 0.2.12 while
 regenerating the release manifest/flasher for the shared project version. The
 0.2.13 functional change is in the self-contained web flasher: the manual BOOT
 sequence is now the primary path, with step-by-step instructions and a pre-flash
 reminder dialog before ESP Web Tools opens the serial picker. A top banner stays
 visible above the ESP Web Tools install modal and changes to "You may now
-release the BOOT button" once erase/write progress is detected.
+release the BOOT button" during the install flow.
 
 0.2.12 removes the old toggle-driven APRS weak-signal host flag and makes the
 AFSK tap automatically look for packet-like audio. Every 20 ms window, hopped
@@ -169,10 +177,11 @@ Build and flasher package
 4. Flash with the generated self-contained web flasher:
    Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
    Hold BOOT before starting the flash and keep holding it through the serial
-   picker and connecting/preparing phase. The large ESP Web Tools install box
-   is normal. Release BOOT only when the page's top banner says "You may now
-   release the BOOT button." The page includes a reminder dialog before it
-   opens the browser serial picker.
+   picker, install confirmation, and initializing stage. The large ESP Web
+   Tools install box is normal. Release BOOT when the page's top banner says
+   "You may now release the BOOT button", usually when ESP Web Tools shows
+   Erasing or visible Installing progress. The page includes a reminder dialog
+   before it opens the browser serial picker.
 
 5. Test browser auto-reset behavior without flashing:
    Open web-flasher/kv4p-auto-reset-diagnostic.html directly in Chromium,
