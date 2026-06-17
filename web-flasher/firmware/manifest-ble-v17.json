@@ -1,6 +1,6 @@
 {
   "name": "KV4P/ATL BLE bridge firmware",
-  "version": "0.2.5-fw17-ble",
+  "version": "0.2.7-fw17-ble",
   "new_install_prompt_erase": false,
   "builds": [
     {

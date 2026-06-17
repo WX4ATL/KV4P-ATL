@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.2.5.
+Current shared development version: 0.2.7.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -66,10 +66,11 @@ Notes:
 - The BLE transport uses Nordic UART-compatible UUIDs and carries the KV4P 2.0 KISS stream.
 - Direct arbitrary USB serial access from a public iPhone app is not available; USB-C is treated as power-only for this implementation path.
 - The web flasher is generated as one self-contained HTML file with ESP Web Tools, the KV4P glyph, manifest data, and the v17 BLE firmware image embedded. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source and regenerates the HTML so future releases include the latest binary. If Chromium cannot initialize the ESP32, use the manual BOOT flow documented in `web-flasher/README.txt`.
+- Version 0.2.7 adds a parallel APRS RX demodulator path with 2200 Hz space-tone emphasis, preserving the restored baseline decoder while recovering additional de-emphasized test packets.
 - Version 0.2.5 keeps the separate experimental auto-reset diagnostic page and fixes it to close the serial port after every run/reset so native esptool can use the CP2102 port afterward.
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: simulator build/test passed, BLE firmware esp32dev-release build passed, and the physical KV4P HT was flashed/verified on 2026-06-15 for shared version 0.2.3. The 0.2.5 source change updates the browser auto-reset diagnostic without changing the flashed firmware image.
+- Current source-build status: simulator build/test passed, BLE firmware esp32dev-release build passed, and the physical KV4P HT was flashed/verified on 2026-06-15 for shared version 0.2.3. Version 0.2.7 rebuilds the BLE firmware image and self-contained browser flasher with the parallel APRS RX demodulator.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.
