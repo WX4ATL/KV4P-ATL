@@ -105,6 +105,10 @@ struct SettingsView: View {
                     Text("House").tag("House")
                     Text("Car").tag("Car")
                 }
+                Toggle("APRS weak-signal RX", isOn: $app.settings.aprsWeakSignalRxEnabled)
+                Text("Optimizes the radio receive chain for packet decoding by opening module squelch, disabling SA818 audio filters, and using AFSK-only gain control while this mode is enabled.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Toggle("Digipeat (mesh)", isOn: $app.settings.digipeatPackets)
                 Toggle("Expose standard BLE KISS TNC", isOn: $app.settings.exposeKISSTNC)
                 if app.settings.exposeKISSTNC {
@@ -148,7 +152,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.3")
+                LabeledContent("App version", value: "0.2.8")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
@@ -161,6 +165,12 @@ struct SettingsView: View {
                     Text(app.lastDebugLine)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let stats = app.afskStats {
+                    LabeledContent("AFSK mode", value: stats.weakRxActive ? "weak-signal" : "normal")
+                    LabeledContent("AFSK level", value: String(format: "rms %u, peak %u, gain %.1fx", stats.rmsLevel, stats.peakLevel, stats.afskGain))
+                    LabeledContent("AFSK clips", value: "\(stats.clipCount)")
+                    LabeledContent("AFSK decoded", value: "\(stats.crcSuccesses)")
                 }
             }
 

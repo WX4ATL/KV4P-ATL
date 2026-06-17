@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.5.
+Current shared development version: 0.2.8.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -106,6 +106,22 @@ BLE central is connected. A previous squelch-gated suppression approach was
 rejected after physical open-squelch testing because it could mute receive
 audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
+
+APRS weak-signal RX note
+0.2.8 adds one host-state flag:
+
+  HOST_STATE_APRS_WEAK_RX      (1 << 15)
+
+When requested and the radio is not transmitting, the firmware treats receive
+as data-first rather than voice-comfort-first. It keeps the RX/AFSK path armed,
+programs the SA818 module with squelch 0, applies no SA818 filter flags, and
+feeds the demodulator from an AFSK-only branch before voice gain/mute. The
+listener ADPCM stream is still controlled only by HOST_STATE_RX_AUDIO_OPEN.
+The demod branch retains the old fixed AFSK gain when weak mode is off, and
+uses conservative adaptive gain plus clipping counters only when weak mode is
+enabled. Firmware emits COMMAND_AFSK_STATS about every 500 ms while status
+reports are enabled so field testing can show RMS, peak, gain, clips, and
+successful CRC decodes.
 
 Test order
 1. Build firmware with BLE only on an ESP32 dev board and run a loopback test

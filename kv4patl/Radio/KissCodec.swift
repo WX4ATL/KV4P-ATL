@@ -28,6 +28,7 @@ enum KV4PDeviceCommand: UInt8 {
     case rxAudio = 0x07
     case windowUpdate = 0x09
     case deviceState = 0x0B
+    case afskStats = 0x0E
 }
 
 enum KissFrame: Equatable {

@@ -24,6 +24,22 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #define DECAY_TIME 0.25
 
+extern HostDesiredState desiredState;
+extern boolean audioOpen;
+
+struct [[gnu::packed]] AfskDecodeStatsPayload {
+  uint32_t audioSamplesSeen;
+  uint32_t afskBlocksProcessed;
+  uint32_t clipCount;
+  uint32_t sampleCount;
+  uint16_t rmsLevel;
+  uint16_t peakLevel;
+  uint16_t afskGainQ8_8;
+  uint16_t noiseFloorEstimate;
+  uint32_t crcSuccesses;
+  uint8_t weakRxActive;
+};
+
 class AdpcmAudioOutput : public AudioOutput {
 public:
   size_t write(const uint8_t *data, size_t len) override {
@@ -40,7 +56,7 @@ public:
         uint8_t encoded[KV4P_ADPCM_PAYLOAD_BYTES] = {};
         const size_t encodedLen = _codec.encode(_codecPcm, KV4P_ADPCM_FRAME_SAMPLES, encoded, sizeof(encoded));
         _sampleCount = 0;
-        if (encodedLen > 0 && mode == MODE_RX) {
+        if (encodedLen > 0 && mode == MODE_RX && audioOpen) {
           esp_task_wdt_reset();
           sendAudio(encoded, encodedLen);
           esp_task_wdt_reset();
@@ -94,8 +110,11 @@ private:
   }
 };
 
+void noteAfskCrcSuccess();
+
 static void onAfskPacketDecoded(const uint8_t *frame, size_t len) {
   if (frame && len > 0) {
+    noteAfskCrcSuccess();
     pulseAprsRxLED();
     sendAx25Packet(frame, len);
   }
@@ -105,15 +124,21 @@ AfskDemodulator afskDemod(AUDIO_SAMPLE_RATE, 2, onAfskPacketDecoded);
 
 class AfskTapEffect : public AudioEffect {
 public:
+  AfskTapEffect() {
+    resetBlockStats();
+  }
+
   AfskTapEffect *clone() override {
     return new AfskTapEffect(*this);
   }
 
   effect_t process(effect_t input) {
     if (active()) {
-      samples[sampleCount++] = (int16_t)input;
+      samples[sampleCount++] = conditionSample((int16_t)input);
       if (sampleCount >= AFSK_TAP_BUFFER_SAMPLES) {
         afskDemod.processSamples(samples, sampleCount);
+        stats.afskBlocksProcessed++;
+        updateAgc();
         sampleCount = 0;
       }
     }
@@ -123,15 +148,114 @@ public:
   void flush() {
     if (sampleCount > 0) {
       afskDemod.processSamples(samples, sampleCount);
+      stats.afskBlocksProcessed++;
+      updateAgc();
       sampleCount = 0;
     }
     afskDemod.flush();
   }
 
+  void noteCrcSuccess() {
+    stats.crcSuccesses++;
+  }
+
+  void maybeSendStats() {
+    if ((desiredState.flags & HOST_STATE_ENABLE_STATUS_REPORTS) == 0) {
+      return;
+    }
+    const uint32_t now = millis();
+    if (now - lastStatsSentMs < AFSK_STATS_INTERVAL_MS) {
+      return;
+    }
+    lastStatsSentMs = now;
+    stats.weakRxActive = weakRxActive() ? 1 : 0;
+    sendKv4pVendorFrame(COMMAND_AFSK_STATS, reinterpret_cast<const uint8_t *>(&stats), sizeof(stats));
+  }
+
 private:
   static const size_t AFSK_TAP_BUFFER_SAMPLES = 256;
+  static const uint32_t AFSK_STATS_INTERVAL_MS = 500;
+  static constexpr float BASELINE_AFSK_GAIN = 24.0f;
+  static constexpr float MIN_AFSK_GAIN = 4.0f;
+  static constexpr float MAX_AFSK_GAIN = 48.0f;
+  static constexpr float TARGET_RMS = 7000.0f;
+  static constexpr float HIGH_RMS = 13000.0f;
+  static constexpr int32_t CLIP_LIMIT = 32700;
+
+  bool weakRxActive() const {
+    return (desiredState.flags & HOST_STATE_APRS_WEAK_RX) && mode != MODE_TX;
+  }
+
+  int16_t conditionSample(int16_t input) {
+    const bool weakMode = weakRxActive();
+    const float gainToUse = weakMode ? afskGain : BASELINE_AFSK_GAIN;
+    float scaled = (float)input * gainToUse;
+    if (scaled > CLIP_LIMIT) {
+      scaled = CLIP_LIMIT;
+      stats.clipCount++;
+      blockClips++;
+    } else if (scaled < -CLIP_LIMIT) {
+      scaled = -CLIP_LIMIT;
+      stats.clipCount++;
+      blockClips++;
+    }
+
+    const int32_t conditioned = (int32_t)lroundf(scaled);
+    const uint32_t magnitude = (uint32_t)abs(conditioned);
+    blockSumSquares += (double)conditioned * (double)conditioned;
+    blockPeak = max(blockPeak, magnitude);
+    blockSamples++;
+    stats.audioSamplesSeen++;
+    stats.sampleCount++;
+    return (int16_t)conditioned;
+  }
+
+  void updateAgc() {
+    if (blockSamples == 0) {
+      return;
+    }
+    const float rms = sqrtf((float)(blockSumSquares / (double)blockSamples));
+    stats.rmsLevel = clampU16((uint32_t)lroundf(rms));
+    stats.peakLevel = clampU16(blockPeak);
+    noiseFloor = (noiseFloor == 0.0f) ? rms : (noiseFloor * 0.96f) + (rms * 0.04f);
+    stats.noiseFloorEstimate = clampU16((uint32_t)lroundf(noiseFloor));
+
+    if (weakRxActive()) {
+      if (blockClips > 1 || blockPeak > 31000U) {
+        afskGain = max(MIN_AFSK_GAIN, afskGain * 0.72f);
+      } else if (rms > HIGH_RMS) {
+        afskGain = max(MIN_AFSK_GAIN, afskGain * 0.90f);
+      } else if (rms < TARGET_RMS && blockPeak < 26000U) {
+        afskGain = min(MAX_AFSK_GAIN, afskGain * 1.03f);
+      }
+    } else {
+      afskGain = BASELINE_AFSK_GAIN;
+    }
+    stats.afskGainQ8_8 = clampU16((uint32_t)lroundf(afskGain * 256.0f));
+    resetBlockStats();
+  }
+
+  uint16_t clampU16(uint32_t value) const {
+    return value > 65535U ? 65535U : (uint16_t)value;
+  }
+
+  void resetBlockStats() {
+    blockSumSquares = 0.0;
+    blockPeak = 0;
+    blockSamples = 0;
+    blockClips = 0;
+  }
+
   int16_t samples[AFSK_TAP_BUFFER_SAMPLES];
   size_t sampleCount = 0;
+  AfskDecodeStatsPayload stats = {};
+  float afskGain = BASELINE_AFSK_GAIN;
+  float noiseFloor = 0.0f;
+  double blockSumSquares = 0.0;
+  uint32_t blockPeak = 0;
+  uint32_t blockSamples = 0;
+  uint32_t blockClips = 0;
+  uint32_t lastStatsSentMs = 0;
 };
 
 bool rxStreamConfigured = false;
@@ -144,6 +268,10 @@ Boost mute(0.0);
 Boost gain(24.0);
 DCOffsetRemover dcOffsetRemover(DECAY_TIME, AUDIO_SAMPLE_RATE);
 AfskTapEffect afskTapEffect;
+
+void noteAfskCrcSuccess() {
+  afskTapEffect.noteCrcSuccess();
+}
 
 inline void injectADCBias() {
   dac_output_enable(DAC_CHANNEL_2);
@@ -172,8 +300,8 @@ void initI2SRx() {
   rxAdpcmOutput.reset();
   afskTapEffect.setActive(true);
   effects.addEffect(dcOffsetRemover);
-  effects.addEffect(gain);
   effects.addEffect(afskTapEffect);
+  effects.addEffect(gain);
   effects.addEffect(mute);
   effects.begin(rxInfo);
   rxStreamConfigured = true;
@@ -193,6 +321,7 @@ void rxAudioLoop() {
   if ((mode == MODE_RX || mode == MODE_STOPPED) && rxStreamConfigured) {
     mute.setActive(squelched);
     rxCopier.copy();
+    afskTapEffect.maybeSendStats();
     esp_task_wdt_reset();
   }
 }

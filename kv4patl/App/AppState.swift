@@ -23,6 +23,7 @@ final class AppState: ObservableObject {
     @Published var statusLine = "Radio disconnected"
     @Published var lastDebugLine = ""
     @Published var codecNotice = ""
+    @Published var afskStats: AfskDecodeStats?
     @Published var isTransmitting = false
     @Published var receiveAudioActive = false
     @Published var sMeter = 0
@@ -646,6 +647,8 @@ final class AppState: ObservableObject {
             // Tests and any future direct callers still get the nonblocking path.
             audio.playReceivedFrameAsync(frame)
             publishAudioDebugIfNeeded()
+        case .afskStats(let stats):
+            afskStats = stats
         case .ax25(let data):
             if let packet = try? AX25Packet.decodeUIFrame(data) {
                 if settings.digipeatPackets, deduper.shouldDigipeat(packet) {
@@ -719,6 +722,9 @@ final class AppState: ObservableObject {
             if settings.rxPowerSaveProfile == "Maximum" {
                 flags |= RadioFlags.rxPowerSaveMaximum
             }
+        }
+        if settings.aprsWeakSignalRxEnabled {
+            flags |= RadioFlags.aprsWeakRx
         }
 
         let state = HostDesiredState(
@@ -1525,4 +1531,5 @@ enum RadioFlags {
     static let enableStatusReports: UInt16 = 1 << 12
     static let rxPowerSave: UInt16 = 1 << 13
     static let rxPowerSaveMaximum: UInt16 = 1 << 14
+    static let aprsWeakRx: UInt16 = 1 << 15
 }

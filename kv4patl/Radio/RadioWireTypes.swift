@@ -120,6 +120,35 @@ struct DeviceState: Equatable, Codable, Sendable {
     }
 }
 
+struct AfskDecodeStats: Equatable, Codable, Sendable {
+    static let byteLength = 29
+
+    var audioSamplesSeen: UInt32
+    var afskBlocksProcessed: UInt32
+    var clipCount: UInt32
+    var sampleCount: UInt32
+    var rmsLevel: UInt16
+    var peakLevel: UInt16
+    var afskGain: Float
+    var noiseFloorEstimate: UInt16
+    var crcSuccesses: UInt32
+    var weakRxActive: Bool
+
+    init?(data: Data, offset: Int = 0) {
+        guard data.count >= offset + Self.byteLength else { return nil }
+        audioSamplesSeen = data.uint32LE(at: offset)
+        afskBlocksProcessed = data.uint32LE(at: offset + 4)
+        clipCount = data.uint32LE(at: offset + 8)
+        sampleCount = data.uint32LE(at: offset + 12)
+        rmsLevel = data.uint16LE(at: offset + 16)
+        peakLevel = data.uint16LE(at: offset + 18)
+        afskGain = Float(data.uint16LE(at: offset + 20)) / 256.0
+        noiseFloorEstimate = data.uint16LE(at: offset + 22)
+        crcSuccesses = data.uint32LE(at: offset + 24)
+        weakRxActive = data[offset + 28] != 0
+    }
+}
+
 struct FirmwareVersion: Equatable, Codable, Sendable {
     static let byteLength = 17
 

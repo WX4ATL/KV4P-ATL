@@ -67,6 +67,7 @@ struct AppSettings: Codable, Equatable {
     var blePowerDefaultMigrated = false
     var rxPowerSaveEnabled = false
     var rxPowerSaveProfile = "Balanced"
+    var aprsWeakSignalRxEnabled = false
 
     init() {}
 
@@ -105,6 +106,7 @@ struct AppSettings: Codable, Equatable {
         blePowerDefaultMigrated = try container.decodeIfPresent(Bool.self, forKey: .blePowerDefaultMigrated) ?? blePowerDefaultMigrated
         rxPowerSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .rxPowerSaveEnabled) ?? rxPowerSaveEnabled
         rxPowerSaveProfile = try container.decodeIfPresent(String.self, forKey: .rxPowerSaveProfile) ?? rxPowerSaveProfile
+        aprsWeakSignalRxEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsWeakSignalRxEnabled) ?? aprsWeakSignalRxEnabled
     }
 }
 

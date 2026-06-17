@@ -6,6 +6,7 @@ enum RadioProtocolEvent: Equatable {
     case deviceState(DeviceState)
     case rxAudio(Data)
     case ax25(Data)
+    case afskStats(AfskDecodeStats)
     case debug(String)
     case windowUpdate(UInt32)
 }
@@ -88,6 +89,10 @@ final class RadioProtocol: @unchecked Sendable {
                 }
             case .rxAudio:
                 eventHandler?(.rxAudio(payload))
+            case .afskStats:
+                if let stats = AfskDecodeStats(data: payload) {
+                    eventHandler?(.afskStats(stats))
+                }
             case .windowUpdate:
                 guard payload.count == 4 else { return }
                 let size = payload.uint32LE(at: 0)
