@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.2.11.
+Current shared development version: 0.2.12.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -107,21 +107,21 @@ rejected after physical open-squelch testing because it could mute receive
 audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
-APRS weak-signal RX note
-0.2.8 adds one host-state flag:
+APRS Bell 202 receive note
+0.2.12 removes the old toggle-driven APRS weak-signal host flag and makes the
+AFSK tap automatically look for packet-like audio. Every 20 ms window, hopped
+every 5 ms, the firmware correlates the raw receive stream against the Bell 202
+1200 Hz and 2200 Hz tones. It compares that tone-band energy against a rolling
+static floor, triggers a packet-candidate window after two consecutive windows
+at least 12 dB over the floor, and uses the candidate window to arm adaptive
+AFSK gain/clipping protection. AX.25 output remains standard KISS DATA frames;
+extra Bell 202 step/floor/tone/candidate information is emitted only in
+COMMAND_AFSK_STATS vendor telemetry.
 
-  HOST_STATE_APRS_WEAK_RX      (1 << 15)
-
-When requested and the radio is not transmitting, the firmware treats receive
-as data-first rather than voice-comfort-first. It keeps the RX/AFSK path armed,
-programs the SA818 module with squelch 0, applies no SA818 filter flags, and
-feeds the demodulator from an AFSK-only branch before voice gain/mute. The
-listener ADPCM stream is still controlled only by HOST_STATE_RX_AUDIO_OPEN.
-The demod branch retains the old fixed AFSK gain when weak mode is off, and
-uses conservative adaptive gain plus clipping counters only when weak mode is
-enabled. Firmware emits COMMAND_AFSK_STATS about every 500 ms while status
-reports are enabled so field testing can show RMS, peak, gain, clips, and
-successful CRC decodes.
+0.2.12 changes the firmware binary payload: automatic Bell 202 packet-candidate
+detection now drives AFSK branch conditioning and the app displays that
+telemetry in Settings > Debug. The standard KISS/APRS wire behavior is
+unchanged.
 
 0.2.11 keeps the firmware behavior and binary payload aligned with 0.2.10 while
 regenerating the release manifest/flasher for the shared app/firmware version.

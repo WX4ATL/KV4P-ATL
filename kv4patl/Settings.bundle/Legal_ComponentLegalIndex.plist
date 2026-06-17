@@ -132,9 +132,16 @@ package. Full license text files are bundled in the same Settings legal area.
     - APRS Working Group, APRS Protocol Reference, Version 1.0.1.
     - Tucson Amateur Packet Radio Corporation, AX.25 Link Access Protocol for
       Amateur Packet Radio, Version 2.2.
+    - John Langner WB2OSZ, Dire Wolf and A Better APRS Packet Demodulator,
+      Part 1: 1200 Baud.
+    - Thomas Sailer and Marat Fayzullin, multimon-ng.
+    - Sivan Toledo 4X6IZ, A High-Performance Sound-Card AX.25 Modem.
+    - Not Black Magic, AFSK.
     Use:
     Protocol specification references for locally written packet encoding,
-    decoding, and display logic. These documents are not linked libraries.
+    decoding, display logic, and Bell 202 packet-candidate DSP. These
+    documents and projects are not linked libraries, and no third-party DSP
+    source code was copied into the KV4P/ATL app or firmware overlay.
 
 11. IMA ADPCM references
     Sources:

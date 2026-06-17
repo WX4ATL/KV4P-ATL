@@ -147,7 +147,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.11")
+                LabeledContent("App version", value: "0.2.12")
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
@@ -162,8 +162,17 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let stats = app.afskStats {
-                    LabeledContent("AFSK mode", value: stats.weakRxActive ? "weak-signal" : "normal")
+                    LabeledContent("AFSK detector", value: stats.bell202CandidateActive ? "Bell 202 candidate" : "idle")
                     LabeledContent("AFSK level", value: String(format: "rms %u, peak %u, gain %.1fx", stats.rmsLevel, stats.peakLevel, stats.afskGain))
+                    if let step = stats.bell202StepDb, let floor = stats.bell202FloorDb {
+                        LabeledContent("Bell 202 step", value: String(format: "%.1f dB over floor %.1f dB", step, floor))
+                    }
+                    if let mark = stats.bell202MarkLevel, let space = stats.bell202SpaceLevel {
+                        LabeledContent("Bell 202 tones", value: "1200 \(mark), 2200 \(space)")
+                    }
+                    if let candidateCount = stats.bell202CandidateCount {
+                        LabeledContent("Bell 202 candidates", value: "\(candidateCount)")
+                    }
                     LabeledContent("AFSK clips", value: "\(stats.clipCount)")
                     LabeledContent("AFSK decoded", value: "\(stats.crcSuccesses)")
                 }

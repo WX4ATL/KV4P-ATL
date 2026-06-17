@@ -74,6 +74,11 @@ struct AboutView: View {
         "APRS Working Group. APRS Protocol Reference. Version 1.0.1, 29 Aug. 2000, https://www.ui-view.net/files/APRS101.pdf.",
         "TAPR Software Library. \"APRS Protocol Specification.\" Tucson Amateur Packet Radio, 2026, https://web.tapr.org/software_library/aprs/aprsspec/spec/aprs101/.",
         "Bruninga, Bob, and APRS Contributors. \"APRS 1.2 Draft Specification Repository.\" GitHub, 2026, https://github.com/wb2osz/aprsspec.",
+        "Langner, John, WB2OSZ. \"Dire Wolf.\" GitHub, 2026, https://github.com/wb2osz/direwolf.",
+        "Langner, John, WB2OSZ. A Better APRS Packet Demodulator, Part 1: 1200 Baud. Dire Wolf Documentation, 2015.",
+        "Sailer, Thomas, and Marat Fayzullin. \"multimon-ng.\" GitHub, 2026, https://github.com/EliasOenal/multimon-ng.",
+        "Toledo, Sivan, 4X6IZ. \"A High-Performance Sound-Card AX.25 Modem.\" TAPR/ARRL Digital Communications Conference, 2012.",
+        "\"AFSK.\" Not Black Magic, 2026, https://www.notblackmagic.com/bitsnpieces/afsk/.",
         "Lassila, Heikki. \"Specification for KISS over BLE (Bluetooth Low Energy).\" aprs-specs, GitHub, 2026, https://github.com/hessu/aprs-specs/blob/master/BLE-KISS-API.md.",
         "Lassila, Heikki. \"New Symbol Graphics and Better Support for Alternate Symbol Tables.\" aprs.fi Blog, 3 Nov. 2015, https://blog.aprs.fi/2015/11/new-symbol-graphics-and-better-support.html."
     ]
@@ -86,7 +91,7 @@ struct AboutView: View {
         "The KV4P/ATL app icon is an Apple Icon Composer document derived from GPL-covered KV4P radio glyph artwork. The icon source layers are included as GPL-covered corresponding source.",
         "The app bundle retains upstream KV4P third-party notices verbatim, including MIT, SIL Open Font License 1.1, LGPLv3, GPLv3, Apache-2.0, and BSD-3-Clause materials that upstream KV4P retained in other-licenses.txt.",
         "The web flasher redistributes ESP Web Tools 10.0.1 under Apache-2.0 and bundled Google web-component code under Apache-2.0 and BSD-3-Clause notices. Those readable license texts are included in the app Settings legal area and in the web flasher package.",
-        "raff/kv4p-go, kv4p-sharp, alta/swift-opus, APRS/AX.25 specifications, and IMA ADPCM references were used as protocol, interoperability, or historical research references. They are not linked into KV4P/ATL app code.",
+        "raff/kv4p-go, kv4p-sharp, alta/swift-opus, APRS/AX.25 specifications, Dire Wolf, multimon-ng, 4X6IZ AX.25 modem materials, Not Black Magic AFSK notes, and IMA ADPCM references were used as protocol, interoperability, DSP, or historical research references. They are not linked into KV4P/ATL app code.",
         "KV4P/ATL currently displays APRS map markers using SF Symbols and local code-derived APRS symbol metadata. No third-party APRS symbol artwork pack is bundled in the current app binary.",
         "Public App Store releases use the bundled GPL-preserving End User License Agreement. The agreement names Blake Ross WX4ATL as licensor, identifies the public source location as https://github.com/WX4ATL/KV4P-ATL, states that GPL-3.0-or-later controls for GPL-covered components, and does not impose further restrictions on GPL rights.",
         "KV4P/ATL and the companion firmware are provided as-is without warranty of any kind, including without limitation the implied warranties of merchantability, fitness for a particular purpose, and non-infringement, to the extent permitted by law.",

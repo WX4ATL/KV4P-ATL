@@ -41,6 +41,10 @@ Third-party components actually redistributed
 Third-party components used only as references or corpus material
 - APRS Protocol Reference and TAPR AX.25 documents are protocol specifications,
   not bundled source libraries.
+- Dire Wolf, multimon-ng, 4X6IZ AX.25 modem materials, and Not Black Magic AFSK
+  notes were DSP/APRS receive research references only. The Bell 202 detector
+  implementation in the firmware overlay is locally written and does not copy
+  or link third-party DSP source code from those projects.
 - raff/kv4p-go and kv4p-sharp were protocol/interoperability references and
   are not linked into the KV4P/ATL app.
 - alta/swift-opus is retained as historical research only; the current audio

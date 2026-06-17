@@ -117,6 +117,45 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(hello?.state.latestRSSI, 88)
     }
 
+    func testAfskDecodeStatsParsesBell202CandidateTelemetry() throws {
+        var data = Data()
+        data.appendLittleEndian(UInt32(48_000))
+        data.appendLittleEndian(UInt32(187))
+        data.appendLittleEndian(UInt32(3))
+        data.appendLittleEndian(UInt32(960))
+        data.appendLittleEndian(UInt16(1234))
+        data.appendLittleEndian(UInt16(12_345))
+        data.appendLittleEndian(UInt16(0x1800))
+        data.appendLittleEndian(UInt16(456))
+        data.appendLittleEndian(UInt32(7))
+        data.append(1)
+        data.append(0)
+        data.appendLittleEndian(Int16(0x0C80))
+        data.appendLittleEndian(Int16(-0x0600))
+        data.appendLittleEndian(UInt16(210))
+        data.appendLittleEndian(UInt16(190))
+        data.appendLittleEndian(UInt32(5))
+
+        let stats = AfskDecodeStats(data: data)
+
+        let decoded = try XCTUnwrap(stats)
+        XCTAssertEqual(data.count, AfskDecodeStats.byteLength)
+        XCTAssertEqual(decoded.audioSamplesSeen, 48_000)
+        XCTAssertEqual(decoded.afskBlocksProcessed, 187)
+        XCTAssertEqual(decoded.clipCount, 3)
+        XCTAssertEqual(decoded.rmsLevel, 1234)
+        XCTAssertEqual(decoded.peakLevel, 12_345)
+        XCTAssertEqual(decoded.afskGain, 24.0, accuracy: 0.01)
+        XCTAssertEqual(decoded.noiseFloorEstimate, 456)
+        XCTAssertEqual(decoded.crcSuccesses, 7)
+        XCTAssertEqual(decoded.bell202CandidateActive, true)
+        XCTAssertEqual(try XCTUnwrap(decoded.bell202StepDb), 12.5, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(decoded.bell202FloorDb), -6.0, accuracy: 0.01)
+        XCTAssertEqual(decoded.bell202MarkLevel, 210)
+        XCTAssertEqual(decoded.bell202SpaceLevel, 190)
+        XCTAssertEqual(decoded.bell202CandidateCount, 5)
+    }
+
     func testFirmwareHelloExposesUHFFrequencyRange() {
         let firmware = FirmwareVersion(data: makeFirmwareBytes(moduleType: .uhf, minFrequency: 420.0, maxFrequency: 450.0))
 

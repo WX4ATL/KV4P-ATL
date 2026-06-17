@@ -121,7 +121,8 @@ struct DeviceState: Equatable, Codable, Sendable {
 }
 
 struct AfskDecodeStats: Equatable, Codable, Sendable {
-    static let byteLength = 29
+    static let legacyByteLength = 29
+    static let byteLength = 42
 
     var audioSamplesSeen: UInt32
     var afskBlocksProcessed: UInt32
@@ -132,10 +133,15 @@ struct AfskDecodeStats: Equatable, Codable, Sendable {
     var afskGain: Float
     var noiseFloorEstimate: UInt16
     var crcSuccesses: UInt32
-    var weakRxActive: Bool
+    var bell202CandidateActive: Bool
+    var bell202StepDb: Float?
+    var bell202FloorDb: Float?
+    var bell202MarkLevel: UInt16?
+    var bell202SpaceLevel: UInt16?
+    var bell202CandidateCount: UInt32?
 
     init?(data: Data, offset: Int = 0) {
-        guard data.count >= offset + Self.byteLength else { return nil }
+        guard data.count >= offset + Self.legacyByteLength else { return nil }
         audioSamplesSeen = data.uint32LE(at: offset)
         afskBlocksProcessed = data.uint32LE(at: offset + 4)
         clipCount = data.uint32LE(at: offset + 8)
@@ -145,7 +151,21 @@ struct AfskDecodeStats: Equatable, Codable, Sendable {
         afskGain = Float(data.uint16LE(at: offset + 20)) / 256.0
         noiseFloorEstimate = data.uint16LE(at: offset + 22)
         crcSuccesses = data.uint32LE(at: offset + 24)
-        weakRxActive = data[offset + 28] != 0
+        bell202CandidateActive = data[offset + 28] != 0
+
+        if data.count >= offset + Self.byteLength {
+            bell202StepDb = Float(data.int16LE(at: offset + 30)) / 256.0
+            bell202FloorDb = Float(data.int16LE(at: offset + 32)) / 256.0
+            bell202MarkLevel = data.uint16LE(at: offset + 34)
+            bell202SpaceLevel = data.uint16LE(at: offset + 36)
+            bell202CandidateCount = data.uint32LE(at: offset + 38)
+        } else {
+            bell202StepDb = nil
+            bell202FloorDb = nil
+            bell202MarkLevel = nil
+            bell202SpaceLevel = nil
+            bell202CandidateCount = nil
+        }
     }
 }
 
@@ -210,6 +230,10 @@ extension Data {
 
     func uint16LE(at offset: Int) -> UInt16 {
         UInt16(self[offset]) | (UInt16(self[offset + 1]) << 8)
+    }
+
+    func int16LE(at offset: Int) -> Int16 {
+        Int16(bitPattern: uint16LE(at: offset))
     }
 
     func uint32LE(at offset: Int) -> UInt32 {
