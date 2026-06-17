@@ -294,6 +294,49 @@ __ESP_WEB_TOOLS_MODULE__
       margin-top: 16px;
     }
 
+    .boot-release-overlay {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      z-index: 2147483647;
+      transform: translateX(-50%);
+      width: min(720px, calc(100% - 28px));
+      border-radius: 8px;
+      border: 2px solid transparent;
+      padding: 14px 16px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+      color: #ffffff;
+      background: #7a4a0b;
+    }
+
+    .boot-release-overlay.release {
+      border-color: #ffffff;
+      background: #087045;
+    }
+
+    .boot-release-overlay.error {
+      border-color: #ffffff;
+      background: #a32635;
+    }
+
+    .boot-release-overlay.done {
+      border-color: #ffffff;
+      background: #09636b;
+    }
+
+    .boot-release-title {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 1.12rem;
+      font-weight: 800;
+    }
+
+    .boot-release-message {
+      display: block;
+      font-size: 0.98rem;
+      line-height: 1.35;
+    }
+
     .sources {
       margin-top: 20px;
       font-size: 0.92rem;
@@ -344,7 +387,7 @@ __ESP_WEB_TOOLS_MODULE__
           <li>Plug the KV4P HT ESP32 into this computer by USB-C or USB.</li>
           <li>Press and keep holding the radio board's <strong>BOOT</strong> button before starting the flash.</li>
           <li>Click <strong>Start manual BOOT flash</strong>, confirm the BOOT reminder, then choose the CP2102/USB serial port in the browser picker.</li>
-          <li>Keep holding <strong>BOOT</strong> until the page shows erase/write/flashing progress. Release BOOT only after writing has started.</li>
+          <li>Keep holding <strong>BOOT</strong> until the top banner says <strong>You may now release the BOOT button</strong>. The large ESP Web Tools install box is normal.</li>
           <li>When flashing finishes, disconnect and reconnect USB or tap RST once, then use <strong>Scan for KV4P BLE</strong>.</li>
         </ol>
       </section>
@@ -381,7 +424,7 @@ __ESP_WEB_TOOLS_MODULE__
         <div id="flashStatus" class="status">Preparing embedded firmware package...</div>
         <div class="callout">
           <strong>BOOT is required for this browser flasher.</strong>
-          Hold BOOT before the serial picker opens. Keep holding it while selecting the port and while the flasher says it is connecting or preparing.
+          Hold BOOT before the serial picker opens. Keep holding it through port selection, confirmation, and initialization. Release only when the top banner says you may release BOOT.
         </div>
         <div class="flash-wrap">
           <esp-web-install-button id="flashButton">
@@ -420,7 +463,7 @@ __ESP_WEB_TOOLS_MODULE__
         <li>While still holding BOOT, click <strong>I am holding BOOT - start flash</strong>.</li>
         <li>Choose the KV4P HT CP2102/USB serial port in the browser picker.</li>
         <li>Do not release BOOT while the flasher says connecting, preparing, or initializing.</li>
-        <li>Release BOOT only after erase/write/flashing progress begins.</li>
+        <li>Release BOOT only when the top banner says <strong>You may now release the BOOT button</strong>.</li>
       </ol>
       <p class="small">If initialization still fails, release BOOT, tap RST once or reconnect USB, then retry from the first BOOT step.</p>
       <div class="dialog-actions">
@@ -428,6 +471,11 @@ __ESP_WEB_TOOLS_MODULE__
         <button id="bootConfirmButton" type="button">I am holding BOOT - start flash</button>
       </div>
     </section>
+  </div>
+
+  <div id="bootReleaseOverlay" class="boot-release-overlay" role="status" aria-live="assertive" hidden>
+    <strong id="bootReleaseTitle" class="boot-release-title">Keep holding BOOT</strong>
+    <span id="bootReleaseMessage" class="boot-release-message">Hold BOOT through port selection, confirmation, and initialization.</span>
   </div>
 
   <script>
@@ -447,12 +495,17 @@ __ESP_WEB_TOOLS_MODULE__
     const bootDialog = document.getElementById("bootDialog");
     const bootCancelButton = document.getElementById("bootCancelButton");
     const bootConfirmButton = document.getElementById("bootConfirmButton");
+    const bootReleaseOverlay = document.getElementById("bootReleaseOverlay");
+    const bootReleaseTitle = document.getElementById("bootReleaseTitle");
+    const bootReleaseMessage = document.getElementById("bootReleaseMessage");
     const bleCheck = document.getElementById("bleCheck");
     const bleStatus = document.getElementById("bleStatus");
 
     let firmwareBlobUrl = null;
     let manifestBlobUrl = null;
     let manualBootConfirmed = false;
+    let bootReleaseState = "";
+    let bootReleaseWatch = null;
 
     function setStatus(text, tone = "") {
       flashStatus.textContent = text;
@@ -503,7 +556,7 @@ __ESP_WEB_TOOLS_MODULE__
       try {
         flashButton.setAttribute("manifest", buildEmbeddedManifestUrl());
         activateButton.disabled = false;
-        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
+        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only when the top banner says you may release BOOT.`, "good");
       } catch (error) {
         setStatus(`Embedded firmware package could not be prepared: ${error.message}`, "warn");
       }
@@ -519,10 +572,86 @@ __ESP_WEB_TOOLS_MODULE__
       bootDialog.hidden = true;
     }
 
+    function setBootReleaseOverlay(state, title, message) {
+      if (bootReleaseState === state && bootReleaseTitle.textContent === title && bootReleaseMessage.textContent === message) {
+        return;
+      }
+      bootReleaseState = state;
+      bootReleaseTitle.textContent = title;
+      bootReleaseMessage.textContent = message;
+      bootReleaseOverlay.className = `boot-release-overlay ${state}`.trim();
+      bootReleaseOverlay.hidden = false;
+    }
+
+    function hideBootReleaseOverlay() {
+      bootReleaseState = "";
+      bootReleaseOverlay.hidden = true;
+    }
+
+    function collectShadowText(root) {
+      const parts = [];
+      const seen = new Set();
+
+      function visit(node) {
+        if (!node || seen.has(node)) {
+          return;
+        }
+        seen.add(node);
+        if (node.shadowRoot) {
+          parts.push(node.shadowRoot.textContent || "");
+          node.shadowRoot.querySelectorAll("*").forEach(visit);
+        }
+        if (node.children) {
+          Array.from(node.children).forEach(visit);
+        }
+      }
+
+      visit(root);
+      return parts.join(" ").replace(/\s+/g, " ").trim();
+    }
+
+    function updateBootReleaseFromInstaller() {
+      const installerText = collectShadowText(flashButton).toLowerCase();
+
+      if (!installerText) {
+        return;
+      }
+
+      if (installerText.includes("all done") || installerText.includes("wrapping up")) {
+        setBootReleaseOverlay("done", "Flash is finishing", "BOOT can stay released. Wait for the install box to complete, then reboot or reconnect the radio.");
+        setStatus("Flash is finishing. BOOT can stay released.", "good");
+        return;
+      }
+
+      if (installerText.includes("failed") || installerText.includes("error")) {
+        setBootReleaseOverlay("error", "Initialization failed", "Release BOOT, tap RST once or reconnect USB, then retry from the first BOOT step.");
+        setStatus("Flash did not initialize. Release BOOT, tap RST or reconnect USB, then retry.", "warn");
+        return;
+      }
+
+      if (installerText.includes("writing progress") || installerText.includes("erasing device") || installerText.includes("device erased")) {
+        setBootReleaseOverlay("release", "You may now release the BOOT button", "Erase/write progress has started. Leave the page visible until flashing finishes.");
+        setStatus("You may now release the BOOT button. Flashing is underway.", "good");
+        return;
+      }
+
+      if (installerText.includes("installing") || installerText.includes("preparing installation") || installerText.includes("initializing") || installerText.includes("confirm installation")) {
+        setBootReleaseOverlay("hold", "Keep holding BOOT", "Do not release yet. Wait for this banner to turn green and say you may release BOOT.");
+        setStatus("Keep holding BOOT. Waiting for the green release banner.", "warn");
+      }
+    }
+
+    function startBootReleaseWatch() {
+      window.clearInterval(bootReleaseWatch);
+      bootReleaseWatch = window.setInterval(updateBootReleaseFromInstaller, 250);
+    }
+
     function startManualBootFlash(event) {
       if (manualBootConfirmed) {
         manualBootConfirmed = false;
-        setStatus("Starting browser flasher. Keep holding BOOT until erase/write progress begins.", "warn");
+        setBootReleaseOverlay("hold", "Keep holding BOOT", "Hold BOOT through port selection, confirmation, and initialization. Wait for the green release message.");
+        startBootReleaseWatch();
+        setStatus("Starting browser flasher. Keep holding BOOT until the top banner says you may release it.", "warn");
         return;
       }
 
@@ -561,17 +690,20 @@ __ESP_WEB_TOOLS_MODULE__
     activateButton.addEventListener("click", startManualBootFlash, { capture: true });
     bootCancelButton.addEventListener("click", () => {
       hideBootDialog();
-      setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
+      hideBootReleaseOverlay();
+      setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only when the top banner says you may release BOOT.`, "good");
     });
     bootConfirmButton.addEventListener("click", () => {
       hideBootDialog();
+      setBootReleaseOverlay("hold", "Keep holding BOOT", "Keep holding while the browser serial picker opens and while ESP Web Tools initializes.");
       manualBootConfirmed = true;
       activateButton.click();
     });
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !bootDialog.hidden) {
         hideBootDialog();
-        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only after erase/write progress begins.`, "good");
+        hideBootReleaseOverlay();
+        setStatus(`Ready to flash embedded ${embeddedFirmware.version}. Hold BOOT before starting; release it only when the top banner says you may release BOOT.`, "good");
       }
     });
 

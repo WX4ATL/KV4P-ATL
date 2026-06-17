@@ -112,7 +112,9 @@ APRS Bell 202 receive note
 regenerating the release manifest/flasher for the shared project version. The
 0.2.13 functional change is in the self-contained web flasher: the manual BOOT
 sequence is now the primary path, with step-by-step instructions and a pre-flash
-reminder dialog before ESP Web Tools opens the serial picker.
+reminder dialog before ESP Web Tools opens the serial picker. A top banner stays
+visible above the ESP Web Tools install modal and changes to "You may now
+release the BOOT button" once erase/write progress is detected.
 
 0.2.12 removes the old toggle-driven APRS weak-signal host flag and makes the
 AFSK tap automatically look for packet-like audio. Every 20 ms window, hopped
@@ -166,10 +168,11 @@ Build and flasher package
    board configuration storage remains compatible.
 4. Flash with the generated self-contained web flasher:
    Open web-flasher/kv4p-ble-flasher.html directly in Chromium.
-   Hold BOOT before starting the flash, keep holding it through the serial
-   picker and connecting/preparing phase, then release BOOT only after
-   erase/write/flashing progress begins. The page includes a reminder dialog
-   before it opens the browser serial picker.
+   Hold BOOT before starting the flash and keep holding it through the serial
+   picker and connecting/preparing phase. The large ESP Web Tools install box
+   is normal. Release BOOT only when the page's top banner says "You may now
+   release the BOOT button." The page includes a reminder dialog before it
+   opens the browser serial picker.
 
 5. Test browser auto-reset behavior without flashing:
    Open web-flasher/kv4p-auto-reset-diagnostic.html directly in Chromium,

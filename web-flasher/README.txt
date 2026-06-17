@@ -29,7 +29,8 @@ How to run locally:
    CP2102/USB serial port in the browser picker.
 
 6. Keep holding BOOT while the flasher says connecting, preparing, or
-   initializing. Release BOOT only after erase/write/flashing progress begins.
+   initializing. The large ESP Web Tools install box is normal. Release BOOT
+   only when the page's top banner says "You may now release the BOOT button."
 
 7. If initialization fails, release BOOT, tap RST once or reconnect USB, then
    retry from step 4.
