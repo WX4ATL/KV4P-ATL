@@ -24,6 +24,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #define DECAY_TIME 0.25
 
+static constexpr int RX_ADC_SAMPLE_RATE = static_cast<int>(AUDIO_SAMPLE_RATE * 1.02f + 0.5f);
+static constexpr float APRS_DEMOD_TARGET_LEVEL = 9500.0f;
+static constexpr float APRS_DEMOD_MIN_LEVEL = 120.0f;
+static constexpr float APRS_DEMOD_MIN_GAIN = 0.45f;
+static constexpr float APRS_DEMOD_MAX_GAIN = 18.0f;
+static constexpr float APRS_DEMOD_CLIP_LEVEL = 22000.0f;
+
 class AdpcmAudioOutput : public AudioOutput {
 public:
   size_t write(const uint8_t *data, size_t len) override {
@@ -101,7 +108,7 @@ static void onAfskPacketDecoded(const uint8_t *frame, size_t len) {
   }
 }
 
-AfskDemodulator afskDemod(AUDIO_SAMPLE_RATE, 2, onAfskPacketDecoded);
+AfskDemodulator afskDemod(RX_ADC_SAMPLE_RATE, 2, onAfskPacketDecoded);
 
 class AfskTapEffect : public AudioEffect {
 public:
@@ -111,7 +118,7 @@ public:
 
   effect_t process(effect_t input) {
     if (active()) {
-      samples[sampleCount++] = (int16_t)input;
+      samples[sampleCount++] = conditionForAprsDemod((int16_t)input);
       if (sampleCount >= AFSK_TAP_BUFFER_SAMPLES) {
         afskDemod.processSamples(samples, sampleCount);
         sampleCount = 0;
@@ -126,12 +133,42 @@ public:
       sampleCount = 0;
     }
     afskDemod.flush();
+    resetConditioner();
+  }
+
+  void resetConditioner() {
+    aprsLevel = APRS_DEMOD_TARGET_LEVEL;
+    aprsGain = 1.0f;
   }
 
 private:
+  int16_t conditionForAprsDemod(int16_t input) {
+    const float x = (float)input;
+    const float magnitude = fabsf(x);
+    const float envelopeRate = magnitude > aprsLevel ? 0.020f : 0.00045f;
+    aprsLevel += envelopeRate * (magnitude - aprsLevel);
+    if (aprsLevel < APRS_DEMOD_MIN_LEVEL) {
+      aprsLevel = APRS_DEMOD_MIN_LEVEL;
+    }
+
+    float desiredGain = APRS_DEMOD_TARGET_LEVEL / aprsLevel;
+    desiredGain = constrain(desiredGain, APRS_DEMOD_MIN_GAIN, APRS_DEMOD_MAX_GAIN);
+    aprsGain += 0.0025f * (desiredGain - aprsGain);
+
+    float y = x * aprsGain;
+    if (y > APRS_DEMOD_CLIP_LEVEL) {
+      y = APRS_DEMOD_CLIP_LEVEL;
+    } else if (y < -APRS_DEMOD_CLIP_LEVEL) {
+      y = -APRS_DEMOD_CLIP_LEVEL;
+    }
+    return (int16_t)y;
+  }
+
   static const size_t AFSK_TAP_BUFFER_SAMPLES = 256;
   int16_t samples[AFSK_TAP_BUFFER_SAMPLES];
   size_t sampleCount = 0;
+  float aprsLevel = APRS_DEMOD_TARGET_LEVEL;
+  float aprsGain = 1.0f;
 };
 
 bool rxStreamConfigured = false;
@@ -142,7 +179,7 @@ AudioEffectStream effects(in);
 StreamCopy rxCopier(rxAdpcmOutput, effects);
 Boost mute(0.0);
 Boost gain(24.0);
-DCOffsetRemover dcOffsetRemover(DECAY_TIME, AUDIO_SAMPLE_RATE);
+DCOffsetRemover dcOffsetRemover(DECAY_TIME, RX_ADC_SAMPLE_RATE);
 AfskTapEffect afskTapEffect;
 
 inline void injectADCBias() {
@@ -166,14 +203,17 @@ void initI2SRx() {
   config.use_apll = true;
   config.auto_clear = false;
   config.adc_pin = hw.pins.pinAudioIn;
-  config.sample_rate = AUDIO_SAMPLE_RATE * 1.02;
+  config.sample_rate = RX_ADC_SAMPLE_RATE;
   in.begin(config);
   effects.clear();
   rxAdpcmOutput.reset();
+  afskTapEffect.resetConditioner();
   afskTapEffect.setActive(true);
   effects.addEffect(dcOffsetRemover);
-  effects.addEffect(gain);
+  // APRS demod gets the post-DC, pre-voice-gain samples so weak Bell 202 tones
+  // are normalized without inheriting the speaker boost's clipping.
   effects.addEffect(afskTapEffect);
+  effects.addEffect(gain);
   effects.addEffect(mute);
   effects.begin(rxInfo);
   rxStreamConfigured = true;
