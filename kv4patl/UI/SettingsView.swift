@@ -46,7 +46,7 @@ struct SettingsView: View {
 
             Section("APRS") {
                 TextField("Your callsign", text: $app.settings.callsign)
-                    .textInputAutocapitalization(.characters)
+                    .kv4pCharactersCapitalization()
 
                 VStack(alignment: .leading, spacing: 12) {
                     aprsSubheader("Location beacons")
@@ -82,7 +82,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     aprsSubheader("Beacon status comment")
                     TextField("Type your own status", text: $app.settings.aprsStatusComment)
-                        .textInputAutocapitalization(.sentences)
+                        .kv4pSentencesCapitalization()
                 }
                 .padding(.vertical, 4)
 
@@ -101,7 +101,7 @@ struct SettingsView: View {
                     Text("Car").tag("Car")
                 }
                 Toggle("Mute RX audio on APRS frequency", isOn: $app.settings.aprsRxMuteEnabled)
-                Text("When the radio is tuned to the selected APRS frequency, the iPhone speaker stays muted while APRS decode and packet logging continue in the background.")
+                Text("When the radio is tuned to the selected APRS frequency, the speaker stays muted while APRS decode and packet logging continue in the background.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Toggle("Digipeat (mesh)", isOn: $app.settings.digipeatPackets)
@@ -147,7 +147,7 @@ struct SettingsView: View {
             }
 
             Section("Versions") {
-                LabeledContent("App version", value: "0.2.15")
+                LabeledContent("App version", value: appVersion)
                 LabeledContent("Firmware version", value: app.firmwareVersion.map { "\($0.version)" } ?? "unknown")
             }
 
@@ -196,6 +196,11 @@ struct SettingsView: View {
         .onChange(of: app.settings) { _, _ in
             app.saveSettings()
         }
+        #if os(macOS)
+        .formStyle(.grouped)
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity)
+        #endif
     }
 
     private func aprsSubheader(_ title: String) -> some View {
@@ -209,14 +214,14 @@ struct SettingsView: View {
         switch moduleType {
         case .vhf:
             TextField("Min 2m TX frequency", text: $app.settings.min2mTx)
-                .keyboardType(.decimalPad)
+                .kv4pDecimalKeyboard()
             TextField("Max 2m TX frequency", text: $app.settings.max2mTx)
-                .keyboardType(.decimalPad)
+                .kv4pDecimalKeyboard()
         case .uhf:
             TextField("Min 70cm TX frequency", text: $app.settings.min70cmTx)
-                .keyboardType(.decimalPad)
+                .kv4pDecimalKeyboard()
             TextField("Max 70cm TX frequency", text: $app.settings.max70cmTx)
-                .keyboardType(.decimalPad)
+                .kv4pDecimalKeyboard()
         }
     }
 
@@ -224,4 +229,7 @@ struct SettingsView: View {
         "\(AppState.formatFrequency(range.lowerMHz))-\(AppState.formatFrequency(range.upperMHz))"
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
 }

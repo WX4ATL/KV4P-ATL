@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 enum AppTab: String, CaseIterable, Identifiable {
     case voice = "Voice"
@@ -13,6 +17,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static let visibleTabs: [AppTab] = [.voice, .aprs, .memories, .settings]
+    static let macSidebarTabs: [AppTab] = [.voice, .aprs, .memories, .settings, .about]
 
     var symbol: String {
         switch self {
@@ -35,6 +40,15 @@ struct RootView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        macRoot
+        #else
+        iOSRoot
+        #endif
+    }
+
+    #if os(iOS)
+    private var iOSRoot: some View {
         Group {
             if selectedTab == .about {
                 NavigationStack {
@@ -52,7 +66,7 @@ struct RootView: View {
                         .tag(tab)
                     }
                 }
-                .toolbarBackground(Color(.systemBackground), for: .tabBar)
+                .toolbarBackground(KV4PPlatformStyle.contentBackground, for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)
             }
         }
@@ -63,6 +77,46 @@ struct RootView: View {
                 .padding(.top, 8)
         }
     }
+    #endif
+
+    #if os(macOS)
+    private var macRoot: some View {
+        NavigationSplitView {
+            List(AppTab.macSidebarTabs, selection: $selectedTab) { tab in
+                Label(tab.rawValue, systemImage: tab.symbol)
+                    .tag(tab)
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("KV4P/ATL")
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
+        } detail: {
+            NavigationStack {
+                tabContent(selectedTab)
+                    .navigationTitle(selectedTab.rawValue)
+                    .toolbar {
+                        ToolbarItem(placement: .status) {
+                            RadioActivityPill()
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                app.toggleRadioConnection()
+                            } label: {
+                                Label(
+                                    app.radioIsConnected ? "Disconnect" : "Connect",
+                                    systemImage: app.radioIsConnected
+                                        ? "antenna.radiowaves.left.and.right.slash"
+                                        : "antenna.radiowaves.left.and.right"
+                                )
+                            }
+                            .tint(app.radioIsConnected ? .red : .accentColor)
+                        }
+                    }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .background(KeyboardDismissInstaller())
+    }
+    #endif
 
     @ViewBuilder
     private func tabContent(_ tab: AppTab) -> some View {
@@ -90,6 +144,7 @@ struct RootView: View {
     }
 }
 
+#if os(iOS)
 private struct KeyboardDismissInstaller: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -162,3 +217,55 @@ private extension UIView {
         return false
     }
 }
+#elseif os(macOS)
+private struct KeyboardDismissInstaller: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.install()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Coordinator {
+        private var eventMonitor: Any?
+
+        deinit {
+            if let eventMonitor {
+                NSEvent.removeMonitor(eventMonitor)
+            }
+        }
+
+        func install() {
+            guard eventMonitor == nil else { return }
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+                guard let window = event.window,
+                      let contentView = window.contentView else {
+                    return event
+                }
+                let point = contentView.convert(event.locationInWindow, from: nil)
+                if !contentView.hitTest(point).isTextInputOrAncestor {
+                    window.makeFirstResponder(nil)
+                }
+                return event
+            }
+        }
+    }
+}
+
+private extension Optional where Wrapped == NSView {
+    var isTextInputOrAncestor: Bool {
+        var view = self
+        while let current = view {
+            if current is NSTextField || current is NSTextView {
+                return true
+            }
+            view = current.superview
+        }
+        return false
+    }
+}
+#endif

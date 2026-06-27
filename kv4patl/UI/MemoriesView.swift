@@ -62,10 +62,14 @@ struct MemoriesView: View {
                 }
             }
         }
+        #if os(iOS)
         .safeAreaPadding(.bottom, 96)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search memories")
+        #else
+        .searchable(text: $searchText, prompt: "Search memories")
+        #endif
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .kv4pPrimaryAction) {
                 Button {
                     showingEditor = true
                 } label: {
@@ -245,7 +249,7 @@ struct MemoryEditorView: View {
                     TextField("Name", text: $name)
                     TextField("Group", text: $group)
                     TextField("RX frequency", text: $frequency)
-                        .keyboardType(.decimalPad)
+                        .kv4pDecimalKeyboard()
                     if let frequencyValidationMessage {
                         Text(frequencyValidationMessage)
                             .font(.caption)
@@ -269,7 +273,7 @@ struct MemoryEditorView: View {
                 }
             }
             .navigationTitle(editingMemory == nil ? "Add Memory" : "Edit Memory")
-            .navigationBarTitleDisplayMode(.inline)
+            .kv4pInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -305,6 +309,9 @@ struct MemoryEditorView: View {
                 )
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 500, minHeight: 540)
+        #endif
     }
 
     private var frequencyValidationMessage: String? {

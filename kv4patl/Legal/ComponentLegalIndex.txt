@@ -4,7 +4,8 @@ Developed by Blake Ross WX4ATL
 
 This index is bundled with KV4P/ATL and names the license, copyright, and
 attribution status of materials shipped with or retained inside the app
-package. Full license text files are bundled in the same Settings legal area.
+package. Full license text files are bundled in the iOS Settings legal area
+and the macOS About legal browser.
 
 1. KV4P/ATL app, BLE firmware overlay, web flasher glue, tools, and icon
    adaptations
@@ -138,7 +139,7 @@ package. Full license text files are bundled in the same Settings legal area.
 13. Apple SDKs and SF Symbols
     Sources:
     Apple SDK frameworks used by the app include SwiftUI, AVFAudio, Core
-    Bluetooth, Core Location, MapKit, UIKit, Foundation, and SF Symbols.
+    Bluetooth, Core Location, MapKit, UIKit, AppKit, Foundation, and SF Symbols.
     Use:
     System SDK functionality supplied by Apple. No Apple framework source or
     SF Symbols font files are bundled by this app.

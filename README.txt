@@ -1,12 +1,12 @@
 KV4P/ATL
 
-KV4P/ATL is a native SwiftUI iPhone companion app, ESP32 BLE firmware overlay,
+KV4P/ATL is a native SwiftUI iPhone and Mac companion app, ESP32 BLE firmware overlay,
 APRS/KISS TNC implementation, and Chromium web flasher for KV4P HT ham radios.
-It keeps the KV4P 2.0 KISS protocol semantics while adding an iPhone-friendly
+It keeps the KV4P 2.0 KISS protocol semantics while adding an Apple-platform
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.2.15.
+Current shared development version: 0.3.0.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -29,32 +29,39 @@ How to run:
 2. Build for simulator without signing:
    xcodebuild build -project kv4patl.xcodeproj -target kv4patl -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
 
-3. Install and launch in an available simulator:
+3. Build and run the native Mac app:
+   xcodebuild build -project kv4patl.xcodeproj -scheme kv4patl-macOS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+   open ~/Library/Developer/Xcode/DerivedData/kv4patl-*/Build/Products/Debug/kv4patl-macOS.app
+
+4. Install and launch in an available simulator:
    xcrun simctl boot <simulator-udid>
    xcrun simctl install <simulator-udid> build/Debug-iphonesimulator/kv4patl.app
    xcrun simctl launch <simulator-udid> com.blakeross.kv4patl
 
-4. Build for iPhone device hardware without signing:
+5. Build for iPhone device hardware without signing:
    xcodebuild build -project kv4patl.xcodeproj -target kv4patl -sdk iphoneos CODE_SIGNING_ALLOWED=NO
 
-5. Run the protocol unit tests on an available simulator:
+6. Run the protocol unit tests on an available simulator:
    xcodebuild test -project kv4patl.xcodeproj -scheme kv4patl -destination 'platform=iOS Simulator,id=<simulator-udid>' CODE_SIGNING_ALLOWED=NO
 
-6. Build the BLE firmware/flasher package:
+7. Run the shared protocol tests natively on macOS:
+   xcodebuild test -project kv4patl.xcodeproj -scheme kv4patl-macOS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+8. Build the BLE firmware/flasher package:
    firmware/ble_bridge/build_ble_release.sh --update
 
-7. Run the local web flasher:
+9. Run the local web flasher:
    Open web-flasher/kv4p-ble-flasher.html in Chrome, Edge, Brave, or another Chromium browser.
    The generated HTML is self-contained and embeds the latest KV4P/ATL BLE firmware binary.
 
-8. Run the experimental browser auto-reset diagnostic:
+10. Run the experimental browser auto-reset diagnostic:
    Open web-flasher/kv4p-auto-reset-diagnostic.html in Chrome, Edge, Brave, or another Chromium browser.
    Select the KV4P HT CP2102 serial port, run the sequence matrix, and review the downloaded JSON log.
 
-9. Create a public source release package:
+11. Create a public source release package:
    tools/make_public_release.sh
 
-10. Build and install on a physical iPhone after provisioning is available:
+12. Build and install on a physical iPhone after provisioning is available:
    Open kv4patl.xcodeproj in Xcode, select your Apple Development team, select your connected iPhone as the run destination, and use Product > Run.
    For command-line installs, get your own device identifier with xcrun devicectl list devices and keep personal device names and identifiers out of committed files.
 
@@ -63,6 +70,7 @@ Provisioning notes:
 - Direct target builds with -sdk iphoneos and -sdk iphonesimulator work; a signed device install requires a local Xcode signing setup.
 
 Notes:
+- Version 0.3.0 adds a native macOS app target that shares the radio, BLE, APRS, persistence, settings, audio codec, and UI source with iPhone. The Mac app uses a resizable/full-screen sidebar workspace, desktop Voice and APRS layouts, Mac-native Core Audio microphone/playback behavior, App Sandbox Bluetooth/audio/location/network entitlements, shared protocol tests, and an in-app browser for every bundled legal text. The iOS and macOS targets use the same bundle identifier so they can be attached to one App Store Connect record for universal purchase.
 - The BLE transport uses Nordic UART-compatible UUIDs and carries the KV4P 2.0 KISS stream.
 - Direct arbitrary USB serial access from a public iPhone app is not available; USB-C is treated as power-only for this implementation path.
 - The web flasher is generated as one self-contained HTML file with ESP Web Tools, the KV4P glyph, manifest data, and the v17 BLE firmware image embedded. The build script reapplies the BLE overlay to a fresh copy of upstream KV4P source and regenerates the HTML so future releases include the latest binary. The Chromium flasher intentionally uses the manual BOOT flow documented in `web-flasher/README.txt`.
@@ -77,6 +85,6 @@ Notes:
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: simulator build/run passed, protocol unit tests passed 26/26, plist validation passed, and BLE firmware esp32dev-release package build passed on 2026-06-17 for shared version 0.2.15. The generated self-contained web flasher embeds firmware manifest version `0.2.15-fw17-ble` with firmware SHA-256 `cea693459c96fd42389aca1487b945d72ee2a28a12b62d888249b7f59950f06c`.
+- Current source-build status: iOS simulator build passed, native macOS build/run passed, shared macOS protocol tests passed 26/26, plist/entitlement validation passed, and the BLE firmware/flasher package was regenerated for shared version 0.3.0. The self-contained web flasher embeds firmware manifest version `0.3.0-fw17-ble`.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.

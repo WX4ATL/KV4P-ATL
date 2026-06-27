@@ -13,12 +13,22 @@ struct VoiceView: View {
 
     var body: some View {
         KV4PScreen(bottomPadding: 24) {
+            #if os(macOS)
+            HStack(alignment: .top, spacing: KV4PTheme.screenSpacing) {
+                frequencyPanel
+                    .frame(minWidth: 520, maxWidth: 680)
+                sMeter
+                    .frame(minWidth: 280, maxWidth: 340)
+            }
+            #else
             frequencyPanel
             sMeter
+            #endif
         }
         .safeAreaInset(edge: .bottom) {
             persistentPTTBar
         }
+        #if os(iOS)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -27,6 +37,7 @@ struct VoiceView: View {
                 }
             }
         }
+        #endif
         .onAppear {
             syncFromApp()
         }
@@ -50,7 +61,7 @@ struct VoiceView: View {
                     TextField("RX Frequency", text: $rxFrequencyText)
                         .font(.system(size: 46, weight: .bold, design: .rounded))
                         .multilineTextAlignment(.center)
-                        .keyboardType(.decimalPad)
+                        .kv4pDecimalKeyboard()
                         .textFieldStyle(.roundedBorder)
                         .focused($focusedFrequencyField, equals: .largeRx)
                         .onSubmit(commitFrequency)
@@ -196,7 +207,7 @@ struct VoiceView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: text)
-                .keyboardType(.decimalPad)
+                .kv4pDecimalKeyboard()
                 .textFieldStyle(.roundedBorder)
                 .focused($focusedFrequencyField, equals: field)
         }
@@ -331,13 +342,16 @@ struct ToneSelectionView: View {
                 }
             }
             .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
+            .kv4pInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 520)
+        #endif
     }
 
     private func display(_ tone: String) -> String {

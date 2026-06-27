@@ -15,7 +15,7 @@ Publish the whitelisted source package defined in PUBLIC_RELEASE_MANIFEST.txt.
 That package includes:
 - license notices
 - build instructions
-- the Swift iPhone app source
+- the shared Swift iPhone and Mac app source
 - firmware source and BLE overlay files
 - web flasher source
 - project files
@@ -41,7 +41,7 @@ Step-by-step GitHub setup
 
 5. Description:
 
-   Native iPhone app, BLE firmware overlay, and web flasher for KV4P HT radios.
+   Native iPhone and Mac apps, BLE firmware overlay, and web flasher for KV4P HT radios.
 
 6. Set visibility to Public.
 7. Do not add a README, license, or .gitignore on GitHub. This local project
@@ -71,7 +71,7 @@ After pushing
    are not visible.
 4. Add repository topics such as:
 
-   kv4p, kv4p-ht, ham-radio, aprs, ios, swiftui, ble, esp32, kiss-tnc
+   kv4p, kv4p-ht, ham-radio, aprs, ios, macos, swiftui, ble, esp32, kiss-tnc
 
 5. In the GitHub About/sidebar website field, optionally add the public web
    flasher URL after it is hosted.

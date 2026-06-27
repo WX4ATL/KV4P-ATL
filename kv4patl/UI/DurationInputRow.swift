@@ -48,7 +48,7 @@ struct DurationInputRow: View {
             Text(title)
             HStack(spacing: 10) {
                 TextField("Amount", text: $amountText)
-                    .keyboardType(.decimalPad)
+                    .kv4pDecimalKeyboard()
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 80)
                     .focused($amountFocused)

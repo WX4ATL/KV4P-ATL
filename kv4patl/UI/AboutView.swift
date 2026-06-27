@@ -16,6 +16,11 @@ struct AboutView: View {
         "Alta Software. \"alta/swift-opus.\" GitHub, 2021, https://github.com/alta/swift-opus.",
         "GitHub Docs. \"Licensing a Repository.\" GitHub, 2026, https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository.",
         "Apple Inc. \"Working with Accessories.\" Apple Developer, 2026, https://developer.apple.com/accessories/.",
+        "Apple Inc. \"Configuring a Multiplatform App.\" Apple Developer Documentation, 2026, https://developer.apple.com/documentation/xcode/configuring-a-multiplatform-app-target.",
+        "Apple Inc. \"Add Platforms.\" App Store Connect Help, 2026, https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms.",
+        "Apple Inc. \"Bluetooth Entitlement.\" Apple Developer Documentation, 2026, https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.bluetooth.",
+        "Apple Inc. \"Location Entitlement.\" Apple Developer Documentation, 2026, https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.personal-information.location.",
+        "Apple Inc. \"requestRecordPermission(completionHandler:).\" Apple Developer Documentation, 2026, https://developer.apple.com/documentation/avfaudio/avaudioapplication/requestrecordpermission(completionhandler:).",
         "Apple Inc. \"Frequently Asked Questions.\" MFi Program, 2026, https://mfi.apple.com/en/faqs.",
         "Apple Inc. \"Charge and Connect with the USB-C Connector on Your iPhone.\" Apple Support, 2026, https://support.apple.com/en-ie/105099.",
         "Apple Inc. \"Licensed Application End User License Agreement.\" Apple Legal, 2026, https://www.apple.com/legal/internet-services/itunes/dev/stdeula/.",
@@ -126,7 +131,7 @@ struct AboutView: View {
                                 .font(.footnote)
                                 .textSelection(.enabled)
                         }
-                        Text("The iOS Settings app also includes the complete license texts, End User License Agreement, retained upstream other-licenses.txt, and third-party notices under KV4P/ATL > Licenses, Credits & Attributions.")
+                        Text("On iPhone, the Settings app also includes the complete license texts, End User License Agreement, retained upstream other-licenses.txt, and third-party notices under KV4P/ATL > Licenses, Credits & Attributions.")
                             .font(.footnote.weight(.semibold))
                             .textSelection(.enabled)
                     }
@@ -136,6 +141,10 @@ struct AboutView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            #if os(macOS)
+            MacBundledLicensesView()
+            #endif
 
             KV4PCard("Sources", systemImage: "books.vertical") {
                 DisclosureGroup(isExpanded: $sourcesExpanded) {
@@ -155,3 +164,62 @@ struct AboutView: View {
         }
     }
 }
+
+#if os(macOS)
+private struct MacBundledLicensesView: View {
+    @State private var selectedDocument = LegalDocument.documents[0]
+
+    var body: some View {
+        KV4PCard("Bundled Legal Texts", systemImage: "doc.text") {
+            Picker("Document", selection: $selectedDocument) {
+                ForEach(LegalDocument.documents) { document in
+                    Text(document.title).tag(document)
+                }
+            }
+            .labelsHidden()
+
+            ScrollView {
+                Text(selectedDocument.contents)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .frame(minHeight: 280, maxHeight: 440)
+            .background(KV4PPlatformStyle.contentBackground)
+            .clipShape(RoundedRectangle(cornerRadius: KV4PTheme.cardRadius))
+            .accessibilityLabel("\(selectedDocument.title) full text")
+        }
+    }
+}
+
+private struct LegalDocument: Identifiable, Hashable {
+    let resourceName: String
+    let title: String
+
+    var id: String { resourceName }
+
+    var contents: String {
+        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return "The bundled legal text could not be loaded."
+        }
+        return text
+    }
+
+    static let documents = [
+        LegalDocument(resourceName: "ComponentLegalIndex", title: "Component Legal Index"),
+        LegalDocument(resourceName: "GPL-3.0-or-later", title: "GNU GPL 3.0 or Later"),
+        LegalDocument(resourceName: "GPLv3SourceNotice", title: "GPL Source Notice"),
+        LegalDocument(resourceName: "CustomAppStoreEULA", title: "End User License Agreement"),
+        LegalDocument(resourceName: "ThirdPartyNotices", title: "Third-Party Notices"),
+        LegalDocument(resourceName: "KV4PUpstreamOtherLicenses", title: "KV4P Upstream Licenses"),
+        LegalDocument(resourceName: "Apache-2.0-ESP-Web-Tools", title: "Apache 2.0 - ESP Web Tools"),
+        LegalDocument(resourceName: "BSD-3-Clause-Google-Web-Components", title: "BSD 3-Clause - Google Components"),
+        LegalDocument(resourceName: "MIT-raff-kv4p-go", title: "MIT - raff/kv4p-go"),
+        LegalDocument(resourceName: "BSD-3-Clause-alta-swift-opus", title: "BSD 3-Clause - alta/swift-opus"),
+        LegalDocument(resourceName: "WebFlasherThirdPartyNotices", title: "Web Flasher Notices"),
+        LegalDocument(resourceName: "AppDistributionTerms", title: "Distribution Terms")
+    ]
+}
+#endif

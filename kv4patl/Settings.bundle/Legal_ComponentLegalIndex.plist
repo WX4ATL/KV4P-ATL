@@ -18,7 +18,8 @@ Developed by Blake Ross WX4ATL
 
 This index is bundled with KV4P/ATL and names the license, copyright, and
 attribution status of materials shipped with or retained inside the app
-package. Full license text files are bundled in the same Settings legal area.
+package. Full license text files are bundled in the iOS Settings legal area
+and the macOS About legal browser.
 
 1. KV4P/ATL app, BLE firmware overlay, web flasher glue, tools, and icon
    adaptations
@@ -132,16 +133,9 @@ package. Full license text files are bundled in the same Settings legal area.
     - APRS Working Group, APRS Protocol Reference, Version 1.0.1.
     - Tucson Amateur Packet Radio Corporation, AX.25 Link Access Protocol for
       Amateur Packet Radio, Version 2.2.
-    - John Langner WB2OSZ, Dire Wolf and A Better APRS Packet Demodulator,
-      Part 1: 1200 Baud.
-    - Thomas Sailer and Marat Fayzullin, multimon-ng.
-    - Sivan Toledo 4X6IZ, A High-Performance Sound-Card AX.25 Modem.
-    - Not Black Magic, AFSK.
     Use:
     Protocol specification references for locally written packet encoding,
-    decoding, display logic, and Bell 202 packet-candidate DSP. These
-    documents and projects are not linked libraries, and no third-party DSP
-    source code was copied into the KV4P/ATL app or firmware overlay.
+    decoding, and display logic. These documents are not linked libraries.
 
 11. IMA ADPCM references
     Sources:
@@ -159,7 +153,7 @@ package. Full license text files are bundled in the same Settings legal area.
 13. Apple SDKs and SF Symbols
     Sources:
     Apple SDK frameworks used by the app include SwiftUI, AVFAudio, Core
-    Bluetooth, Core Location, MapKit, UIKit, Foundation, and SF Symbols.
+    Bluetooth, Core Location, MapKit, UIKit, AppKit, Foundation, and SF Symbols.
     Use:
     System SDK functionality supplied by Apple. No Apple framework source or
     SF Symbols font files are bundled by this app.

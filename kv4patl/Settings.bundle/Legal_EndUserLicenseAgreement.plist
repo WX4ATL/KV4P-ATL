@@ -50,11 +50,12 @@ must not be distributed until that repository is public and contains the
 corresponding source for the exact released build.
 
 5. Third-party notices
-Third-party notices are available inside the iOS Settings app under
-KV4P/ATL &gt; Licenses, Credits &amp; Attributions and in the source repository. ESP
-Web Tools is licensed under Apache-2.0. Bundled Google web-component code
-inside ESP Web Tools includes Apache-2.0 and BSD-3-Clause components. The app
-also retains upstream KV4P third-party notices where relevant.
+Third-party notices are available inside the iOS Settings app under KV4P/ATL &gt;
+Licenses, Credits &amp; Attributions, inside the macOS app under About &gt; Bundled
+Legal Texts, and in the source repository. ESP Web Tools is licensed under
+Apache-2.0. Bundled Google web-component code inside ESP Web Tools includes
+Apache-2.0 and BSD-3-Clause components. The app also retains upstream KV4P
+third-party notices where relevant.
 
 6. Amateur-radio responsibility
 You are responsible for complying with applicable amateur-radio laws,

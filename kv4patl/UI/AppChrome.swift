@@ -2,7 +2,11 @@
 import SwiftUI
 
 enum KV4PTheme {
+    #if os(macOS)
+    static let maxContentWidth: CGFloat = 1040
+    #else
     static let maxContentWidth: CGFloat = 720
+    #endif
     static let cardRadius: CGFloat = 8
     static let screenSpacing: CGFloat = 16
     static let bottomPadding: CGFloat = 104
@@ -28,8 +32,10 @@ struct KV4PScreen<Content: View>: View {
             .frame(maxWidth: .infinity)
         }
         .safeAreaPadding(.bottom, bottomPadding)
+        #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
-        .background(Color(.systemGroupedBackground))
+        #endif
+        .background(KV4PPlatformStyle.groupedBackground)
     }
 }
 

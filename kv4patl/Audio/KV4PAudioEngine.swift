@@ -13,7 +13,11 @@ enum KV4PMicrophonePermissionState: String {
         case .granted:
             return "Microphone ready."
         case .denied:
+            #if os(macOS)
+            return "Enable microphone access in System Settings."
+            #else
             return "Enable microphone access in iPhone Settings."
+            #endif
         case .undetermined:
             return "Microphone access has not been requested yet."
         case .unknown:
@@ -109,6 +113,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     init(codec: VoiceCodec = IMAADPCMCodec()) {
         self.codec = codec
         workQueue.setSpecific(key: workQueueKey, value: ())
+        #if os(iOS)
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
@@ -116,7 +121,8 @@ final class KV4PAudioEngine: @unchecked Sendable {
         ) { [weak self] notification in
             self?.handleAudioRouteChange(notification)
         }
-        logAudio("audio engine initialized; BLE GATT/KISS audio uses media playback for RX and short playAndRecord sessions only during PTT")
+        #endif
+        logAudio("audio engine initialized; BLE GATT/KISS audio keeps RX playback warm and opens microphone capture only during PTT")
     }
 
     deinit {
@@ -134,9 +140,9 @@ final class KV4PAudioEngine: @unchecked Sendable {
         case .denied:
             completion(false)
         case .undetermined:
-            logAudio("requesting iOS microphone permission prompt")
+            logAudio("requesting microphone permission prompt")
             AVAudioApplication.requestRecordPermission { granted in
-                self.logAudio("iOS microphone permission prompt completed granted=\(granted)")
+                self.logAudio("microphone permission prompt completed granted=\(granted)")
                 DispatchQueue.main.async {
                     completion(granted)
                 }
@@ -216,7 +222,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
 
     func startCapture(onFrame: @escaping (Data) -> Void) throws {
         try syncOnWorkQueue {
-            logAudio("capture start requested. engineRunning=\(engine.isRunning) mode=\(modeLabel) \(describeAudioRoute(AVAudioSession.sharedInstance()))")
+            logAudio("capture start requested. engineRunning=\(engine.isRunning) mode=\(modeLabel) \(describeAudioRoute())")
             if mode != .capture {
                 teardownInputTap()
                 try codec.resetEncoder()
@@ -244,7 +250,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
                 format = captureFormat(for: input)
             }
             guard let format else {
-                logAudio("capture format unavailable. inputOutput=\(describeFormat(input.outputFormat(forBus: 0))) route=\(describeAudioRoute(AVAudioSession.sharedInstance()))")
+                logAudio("capture format unavailable. inputOutput=\(describeFormat(input.outputFormat(forBus: 0))) route=\(describeAudioRoute())")
                 throw AudioCodecError.captureUnavailable
             }
             try installInputTap(on: input, diagnosticFormat: format, onFrame: onFrame)
@@ -271,24 +277,30 @@ final class KV4PAudioEngine: @unchecked Sendable {
             return
         }
 
-        logAudio("mic tap install rejected by Core Audio: \(errorMessage as String? ?? "unknown"). diagnosticFormat=\(describeFormat(diagnosticFormat)) route=\(describeAudioRoute(AVAudioSession.sharedInstance()))")
+        logAudio("mic tap install rejected by Core Audio: \(errorMessage as String? ?? "unknown"). diagnosticFormat=\(describeFormat(diagnosticFormat)) route=\(describeAudioRoute())")
         throw AudioCodecError.captureUnavailable
     }
 
     private func startCaptureEngineForLiveMicrophoneInput() throws {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try? AVAudioApplication.shared.setInputMuted(false)
+        #endif
         try configureSessionForRadioAudio(requiresInput: true)
         captureEngine.prepare()
         try captureEngine.start()
+        #if os(iOS)
         logAudio("capture engine started with live microphone input requested. \(describeAudioRoute(session))")
+        #else
+        logAudio("capture engine started with live microphone input requested. \(describeAudioRoute())")
+        #endif
     }
 
     private func scheduleCaptureStartWatchdog() {
         workQueue.asyncAfter(deadline: .now() + Self.captureStartWatchdogDelaySeconds) { [weak self] in
             guard let self, self.inputTapInstalled, self.mode == .capture else { return }
             if self.captureTapCallbacks == 0 {
-                self.logAudio("mic input watchdog: tap installed but no microphone callbacks yet. captureEngineRunning=\(self.captureEngine.isRunning) \(self.describeAudioRoute(AVAudioSession.sharedInstance()))")
+                self.logAudio("mic input watchdog: tap installed but no microphone callbacks yet. captureEngineRunning=\(self.captureEngine.isRunning) \(self.describeAudioRoute())")
             } else {
                 self.logAudio("mic input watchdog: live callbacks=\(self.captureTapCallbacks) encodedTX=\(self.encodedCaptureFrames)")
             }
@@ -348,10 +360,11 @@ final class KV4PAudioEngine: @unchecked Sendable {
 
     func currentRouteDebugSummary() -> String {
         syncOnWorkQueue {
-            describeAudioRoute(AVAudioSession.sharedInstance())
+            describeAudioRoute()
         }
     }
 
+    #if os(iOS)
     private func handleAudioRouteChange(_ notification: Notification) {
         let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
         workQueue.async { [weak self] in
@@ -373,6 +386,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             }
         }
     }
+    #endif
 
     func playReceivedFrame(_ frame: Data, speakerMuted: Bool = false, softwareSquelchLevel: Int = 0) throws {
         try syncOnWorkQueue {
@@ -1234,6 +1248,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private func configureSessionForRadioAudio(requiresInput: Bool) throws {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         let targetCategory: AVAudioSession.Category = requiresInput ? .playAndRecord : .playback
         let targetMode: AVAudioSession.Mode = .default
@@ -1292,8 +1307,16 @@ final class KV4PAudioEngine: @unchecked Sendable {
             }
         }
         throw lastError ?? (requiresInput ? AudioCodecError.captureUnavailable : AudioCodecError.playbackUnavailable)
+        #else
+        let targetKind: AudioSessionKind = requiresInput ? .capture : .playback
+        if configuredSessionKind != targetKind {
+            configuredSessionKind = targetKind
+            logAudio("macOS Core Audio mode set kind=\(targetKind.rawValue)")
+        }
+        #endif
     }
 
+    #if os(iOS)
     private func applyAudioSessionCategory(
         _ session: AVAudioSession,
         category: AVAudioSession.Category,
@@ -1336,6 +1359,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             logAudio("speaker override failed: \(error.localizedDescription)")
         }
     }
+    #endif
 
     private func captureFormat(for input: AVAudioInputNode) -> AVAudioFormat? {
         let hardwareFormat = input.outputFormat(forBus: 0)
@@ -1343,6 +1367,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
             return hardwareFormat
         }
 
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         let sampleRate = session.sampleRate > 0 ? session.sampleRate : KV4PVoice.engineSampleRate
         let channelCount = AVAudioChannelCount(max(1, session.inputNumberOfChannels))
@@ -1353,10 +1378,15 @@ final class KV4PAudioEngine: @unchecked Sendable {
             channels: channelCount,
             interleaved: false
         )
+        #else
+        return nil
+        #endif
     }
 
     private func deactivateAudioSessionForModeSwitch() {
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     private func ensurePlayerAttached(forceReconnect: Bool = false) {
@@ -1412,7 +1442,7 @@ final class KV4PAudioEngine: @unchecked Sendable {
     }
 
     private func configurePlaybackOutputForCurrentRoute(forceReconnect: Bool = false) {
-        let desiredMode = preferredPlaybackOutputMode(for: AVAudioSession.sharedInstance())
+        let desiredMode = preferredPlaybackOutputMode()
         let switchingMode = desiredMode != playbackOutputMode
 
         if switchingMode {
@@ -1441,6 +1471,16 @@ final class KV4PAudioEngine: @unchecked Sendable {
         }
     }
 
+    private func preferredPlaybackOutputMode() -> PlaybackOutputMode {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        return session.currentRoute.outputs.contains { isBufferedWirelessOutput($0.portType) } ? .sourceRing : .scheduledBuffers
+        #else
+        return .scheduledBuffers
+        #endif
+    }
+
+    #if os(iOS)
     private func preferredPlaybackOutputMode(for session: AVAudioSession) -> PlaybackOutputMode {
         session.currentRoute.outputs.contains { isBufferedWirelessOutput($0.portType) } ? .sourceRing : .scheduledBuffers
     }
@@ -1474,21 +1514,32 @@ final class KV4PAudioEngine: @unchecked Sendable {
         return session.inputNumberOfChannels > 0
     }
 
-    private func describeAudioRoute(_ session: AVAudioSession) -> String {
+    private func describeAudioRoute(_ session: AVAudioSession = AVAudioSession.sharedInstance()) -> String {
         let inputs = session.currentRoute.inputs.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",")
         let outputs = session.currentRoute.outputs.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",")
         let availableInputs = session.availableInputs?.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",") ?? "none"
         return "route in[\(inputs.isEmpty ? "none" : inputs)] out[\(outputs.isEmpty ? "none" : outputs)] available[\(availableInputs)] inputChannels=\(session.inputNumberOfChannels) outputChannels=\(session.outputNumberOfChannels) sampleRate=\(Int(session.sampleRate)) io=\(Int(session.ioBufferDuration * 1_000))ms category=\(session.category.rawValue) mode=\(session.mode.rawValue)"
     }
+    #else
+    private func describeAudioRoute() -> String {
+        let input = captureEngine.inputNode.outputFormat(forBus: 0)
+        let output = engine.outputNode.outputFormat(forBus: 0)
+        return "macOS Core Audio input[\(describeFormat(input))] output[\(describeFormat(output))]"
+    }
+    #endif
 
     private func describeFormat(_ format: AVAudioFormat) -> String {
         "sampleRate=\(format.sampleRate) channels=\(format.channelCount) common=\(format.commonFormat.rawValue)"
     }
 
     private func compactRouteSummary() -> String {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         let output = session.currentRoute.outputs.first?.portType.rawValue ?? "none"
         return "out \(output), cat \(session.category.rawValue), sess \(session.mode.rawValue), sr \(Int(session.sampleRate)), io \(Int(session.ioBufferDuration * 1_000)) ms, vol \(String(format: "%.2f", session.outputVolume))"
+        #else
+        return "macOS Core Audio, \(describeFormat(engine.outputNode.outputFormat(forBus: 0)))"
+        #endif
     }
 
     private static func gainMultiplier(for setting: String, normal: Float, high: Float) -> Float {

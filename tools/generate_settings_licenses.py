@@ -44,6 +44,8 @@ def make_text_pane(prefix: str, title: str, text: str) -> str:
 
 def main() -> None:
     SETTINGS.mkdir(exist_ok=True)
+    with (ROOT / "kv4patl" / "Info.plist").open("rb") as handle:
+        app_version = plistlib.load(handle)["CFBundleShortVersionString"]
     for plist_path in SETTINGS.glob("*.plist"):
         plist_path.unlink()
 
@@ -101,7 +103,7 @@ def main() -> None:
             spec_group("KV4P/ATL", "Settings and legal information for the KV4P/ATL radio app."),
             spec_child("Licenses, Credits & Attributions", "Legal_Index"),
             spec_value("App Name", "app_name", "KV4P/ATL"),
-            spec_value("Version", "version", "0.2.3"),
+            spec_value("Version", "version", app_version),
             spec_value("Project License", "project_license", "GPL-3.0-or-later"),
         ],
     )

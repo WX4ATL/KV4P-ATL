@@ -23,7 +23,8 @@ Copyright summary
 Corresponding source
 Public binary releases of the KV4P/ATL app or BLE firmware include a clear
 source-code link to the complete corresponding source for:
-- kv4patl/ Swift, Objective-C bridge, assets, project.yml, and tests.
+- kv4patl/ shared iOS/macOS Swift, Objective-C bridge, assets, entitlements,
+  project.yml, and tests.
 - firmware/ble_bridge/ overlay, build scripts, partition table, and exact
   instructions needed to rebuild the flashed binary.
 - web-flasher/ HTML, manifests, bundled ESP Web Tools files, and license

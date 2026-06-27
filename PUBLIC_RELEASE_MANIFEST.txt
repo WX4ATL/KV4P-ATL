@@ -4,7 +4,7 @@ Developed by Blake Ross WX4ATL
 
 Purpose
 This manifest defines the public, legally shippable source-release set for
-KV4P/ATL across iOS, firmware, and the Chromium web flasher.
+KV4P/ATL across iOS, macOS, firmware, and the Chromium web flasher.
 
 Public source-release contents
 - LICENSE.txt

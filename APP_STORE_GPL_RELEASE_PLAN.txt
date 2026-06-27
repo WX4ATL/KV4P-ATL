@@ -66,11 +66,12 @@ GitHub steps
    same repo or linked from the release notes.
 6. Include the upstream KV4P HT commit or release version used to build the
    firmware overlay.
-7. Put https://github.com/WX4ATL/KV4P-ATL in the iOS About/Licenses
+7. Put https://github.com/WX4ATL/KV4P-ATL in the iOS and macOS About/Licenses
    screen and App Store review notes after the repository is public.
 
 App Store steps
-1. Keep all GPL notices visible in the app under Settings > About/Licenses.
+1. Keep all GPL notices visible in the app under Settings > About/Licenses on
+   iPhone and in About > Bundled Legal Texts on Mac.
 2. Publish complete corresponding source before submitting the binary.
 3. In App Store Connect, choose a Custom License Agreement instead of Apple's
    Standard EULA.
@@ -81,6 +82,9 @@ App Store steps
    GPL-3.0-or-later and provide the public GitHub source URL.
 6. Do not submit with Apple's Standard EULA alone; the bundled End User
    License Agreement is the distribution rule for this GPL-covered app.
+7. Add iOS and macOS to one App Store Connect app record with the same bundle
+   identifier. After both platform versions are approved, App Store Connect
+   offers them as a universal purchase.
 
 Why a custom license agreement matters
 Apple's default App Store EULA says apps are licensed, not sold, and includes

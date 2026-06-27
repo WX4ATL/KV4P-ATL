@@ -31,8 +31,17 @@ struct APRSChatView: View {
                 VStack(spacing: 12) {
                     switch section {
                     case .map:
+                        #if os(macOS)
+                        HStack(alignment: .top, spacing: 16) {
+                            mapPanel
+                                .frame(maxWidth: 620)
+                            beaconList
+                                .frame(minWidth: 300, maxWidth: .infinity)
+                        }
+                        #else
                         mapPanel
                         beaconList
+                        #endif
                     case .messages:
                         messageList
                     case .beacons:
@@ -49,8 +58,10 @@ struct APRSChatView: View {
         .safeAreaInset(edge: .bottom) {
             composer
         }
-        .background(Color(.systemGroupedBackground))
+        .background(KV4PPlatformStyle.groupedBackground)
+        #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
+        #endif
     }
 
     private var sectionPicker: some View {
@@ -174,7 +185,7 @@ struct APRSChatView: View {
 
     private var recipientField: some View {
         TextField("To", text: $recipient)
-            .textInputAutocapitalization(.characters)
+            .kv4pCharactersCapitalization()
             .textFieldStyle(.roundedBorder)
             .submitLabel(.next)
             .focused($focusedComposerField, equals: .recipient)
