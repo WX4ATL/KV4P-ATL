@@ -109,6 +109,9 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Developed by Blake Ross WX4ATL")
                         .font(.title.bold())
+                    Text("Created with ChatGPT Codex")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
 
