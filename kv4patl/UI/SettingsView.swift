@@ -187,6 +187,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .scrollIndicators(.visible)
         .safeAreaInset(edge: .bottom) {
             Color.clear
                 .frame(height: KV4PTheme.bottomPadding)

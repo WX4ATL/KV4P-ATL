@@ -62,6 +62,7 @@ struct MemoriesView: View {
                 }
             }
         }
+        .scrollIndicators(.visible)
         #if os(iOS)
         .safeAreaPadding(.bottom, 96)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search memories")

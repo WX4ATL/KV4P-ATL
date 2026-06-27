@@ -171,6 +171,7 @@ struct AboutView: View {
 #if os(macOS)
 private struct MacBundledLicensesView: View {
     @State private var selectedDocument = LegalDocument.documents[0]
+    @State private var presentedDocument: LegalDocument?
 
     var body: some View {
         KV4PCard("Bundled Legal Texts", systemImage: "doc.text") {
@@ -181,18 +182,50 @@ private struct MacBundledLicensesView: View {
             }
             .labelsHidden()
 
-            ScrollView {
-                Text(selectedDocument.contents)
+            Button {
+                presentedDocument = selectedDocument
+            } label: {
+                Label("View Full Text", systemImage: "doc.text.magnifyingglass")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .sheet(item: $presentedDocument) { document in
+            MacLegalDocumentSheet(document: document)
+        }
+    }
+}
+
+private struct MacLegalDocumentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let document: LegalDocument
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(document.title)
+                    .font(.title2.bold())
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(document.contents)
                     .font(.system(.footnote, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding()
             }
-            .frame(minHeight: 280, maxHeight: 440)
-            .background(KV4PPlatformStyle.contentBackground)
-            .clipShape(RoundedRectangle(cornerRadius: KV4PTheme.cardRadius))
-            .accessibilityLabel("\(selectedDocument.title) full text")
+            .scrollIndicators(.visible)
+            .accessibilityLabel("\(document.title) full text")
         }
+        .frame(minWidth: 620, idealWidth: 760, minHeight: 480, idealHeight: 680)
     }
 }
 

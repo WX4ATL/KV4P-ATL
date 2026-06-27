@@ -27,21 +27,15 @@ struct APRSChatView: View {
         VStack(spacing: 0) {
             sectionPicker
 
-            ScrollView {
+            #if os(macOS)
+            macSectionContent
+            #else
+            ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 12) {
                     switch section {
                     case .map:
-                        #if os(macOS)
-                        HStack(alignment: .top, spacing: 16) {
-                            mapPanel
-                                .frame(maxWidth: 620)
-                            beaconList
-                                .frame(minWidth: 300, maxWidth: .infinity)
-                        }
-                        #else
                         mapPanel
                         beaconList
-                        #endif
                     case .messages:
                         messageList
                     case .beacons:
@@ -54,6 +48,8 @@ struct APRSChatView: View {
                 .frame(maxWidth: KV4PTheme.maxContentWidth)
                 .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.visible)
+            #endif
         }
         .safeAreaInset(edge: .bottom) {
             composer
@@ -63,6 +59,47 @@ struct APRSChatView: View {
         .scrollDismissesKeyboard(.interactively)
         #endif
     }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macSectionContent: some View {
+        if section == .map {
+            HStack(alignment: .top, spacing: 16) {
+                mapPanel
+                    .frame(maxWidth: 620)
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    beaconList
+                        .frame(minWidth: 300, maxWidth: .infinity)
+                }
+                .scrollIndicators(.visible)
+                .frame(maxHeight: .infinity)
+            }
+            .padding()
+            .frame(maxWidth: KV4PTheme.maxContentWidth, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            ScrollView(.vertical, showsIndicators: true) {
+                Group {
+                    switch section {
+                    case .messages:
+                        messageList
+                    case .beacons:
+                        beaconList
+                    case .packets:
+                        packetList
+                    case .map:
+                        EmptyView()
+                    }
+                }
+                .padding()
+                .frame(maxWidth: KV4PTheme.maxContentWidth)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollIndicators(.visible)
+        }
+    }
+    #endif
 
     private var sectionPicker: some View {
         Picker("APRS", selection: $section) {

@@ -22,7 +22,7 @@ struct KV4PScreen<Content: View>: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: KV4PTheme.screenSpacing) {
                 content
             }
@@ -31,6 +31,7 @@ struct KV4PScreen<Content: View>: View {
             .frame(maxWidth: KV4PTheme.maxContentWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .scrollIndicators(.visible)
         .safeAreaPadding(.bottom, bottomPadding)
         #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
