@@ -187,7 +187,7 @@ struct APRSChatView: View {
                 HStack(spacing: 8) {
                     recipientField
                         .frame(maxWidth: 132)
-                    messageField
+                    messageEditor
                     sendButton
                 }
                 VStack(spacing: 8) {
@@ -195,7 +195,7 @@ struct APRSChatView: View {
                         recipientField
                         sendButton
                     }
-                    messageField
+                    messageEditor
                 }
             }
 
@@ -238,6 +238,22 @@ struct APRSChatView: View {
             .submitLabel(.send)
             .focused($focusedComposerField, equals: .message)
             .onSubmit(sendMessage)
+            .onChange(of: message) { _, newValue in
+                let sanitized = APRSService.sanitizedMessageText(newValue)
+                if sanitized != newValue {
+                    message = sanitized
+                }
+            }
+    }
+
+    private var messageEditor: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            messageField
+            Text("\(message.count)/\(APRSService.maxMessageTextLength)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(message.count == APRSService.maxMessageTextLength ? .orange : .secondary)
+                .accessibilityLabel("\(message.count) of \(APRSService.maxMessageTextLength) APRS message characters used")
+        }
     }
 
     private var sendButton: some View {
@@ -258,9 +274,10 @@ struct APRSChatView: View {
             focusedComposerField = nil
             return
         }
-        app.sendAPRSMessage(to: recipient, body: trimmed)
-        message.removeAll()
-        focusedComposerField = nil
+        if app.sendAPRSMessage(to: recipient, body: trimmed) {
+            message.removeAll()
+            focusedComposerField = nil
+        }
     }
 
     private enum ComposerField: Hashable {
@@ -315,6 +332,10 @@ struct APRSMessageRow: View {
                         .padding(.vertical, 2)
                         .background(.blue, in: Capsule())
                 }
+                APRSDeliveryBadge(
+                    state: message.deliveryState,
+                    retriesRemaining: message.retriesRemaining
+                )
                 Spacer()
                 Text(message.timestamp, style: .time)
                     .font(.caption)
@@ -371,6 +392,73 @@ struct APRSMessageRow: View {
         case .directionFinding: "antenna.radiowaves.left.and.right"
         case .invalid: "exclamationmark.triangle"
         case .raw: "doc.plaintext"
+        }
+    }
+}
+
+struct APRSDeliveryBadge: View {
+    var state: APRSDeliveryState
+    var retriesRemaining: Int?
+
+    var body: some View {
+        if state != .none {
+            ZStack {
+                Circle()
+                    .fill(backgroundColor)
+                badgeContent
+                    .font(.caption2.bold())
+                    .foregroundStyle(foregroundColor)
+            }
+            .frame(width: 23, height: 23)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText)
+            .help(accessibilityText)
+        }
+    }
+
+    @ViewBuilder
+    private var badgeContent: some View {
+        switch state {
+        case .pending:
+            Text("\(retriesRemaining ?? 0)")
+                .monospacedDigit()
+        case .acknowledged:
+            Image(systemName: "checkmark")
+        case .failed:
+            Image(systemName: "questionmark")
+        case .acknowledgementSent:
+            Image(systemName: "arrow.up")
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch state {
+        case .pending: .yellow
+        case .acknowledged: .green
+        case .failed: .red
+        case .acknowledgementSent: .blue
+        case .none: .clear
+        }
+    }
+
+    private var foregroundColor: Color {
+        state == .pending ? .black : .white
+    }
+
+    private var accessibilityText: String {
+        switch state {
+        case .pending:
+            "Waiting for APRS acknowledgement, \(retriesRemaining ?? 0) retries remaining"
+        case .acknowledged:
+            "APRS message acknowledged"
+        case .failed:
+            "APRS message was not acknowledged"
+        case .acknowledgementSent:
+            "Acknowledgement sent for received APRS message"
+        case .none:
+            ""
         }
     }
 }

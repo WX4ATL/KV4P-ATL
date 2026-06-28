@@ -180,7 +180,95 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(parsed.type, .message)
         XCTAssertEqual(parsed.to, "BLN1CQ")
         XCTAssertTrue(parsed.body.contains("Hello KV4P"))
-        XCTAssertTrue(parsed.body.contains("{00042"))
+        XCTAssertEqual(parsed.messageIdentifier, "00042")
+        XCTAssertFalse(parsed.body.contains("{00042"))
+    }
+
+    func testAPRSCompactReplyAckMessageEncodingAndParsing() throws {
+        let service = APRSService()
+        let packet = try service.makeMessage(
+            from: "WX4ATL-7",
+            to: "N0CALL-1",
+            body: "Hello | noisy~world{",
+            identifier: "0A",
+            replyAcknowledgementIdentifier: "1B"
+        )
+        let info = String(decoding: packet.information, as: UTF8.self)
+        let context = try XCTUnwrap(service.messageContext(packet: packet))
+
+        XCTAssertEqual(info, ":N0CALL-1 :Hello  noisyworld{0A}1B")
+        XCTAssertEqual(context.source, "WX4ATL-7")
+        XCTAssertEqual(context.envelope.addressee, "N0CALL-1")
+        XCTAssertEqual(context.envelope.text, "Hello  noisyworld")
+        XCTAssertEqual(context.envelope.rawIdentifier, "0A}1B")
+        XCTAssertEqual(context.envelope.baseIdentifier, "0A")
+        XCTAssertEqual(context.envelope.replyAcknowledgementIdentifier, "1B")
+        XCTAssertTrue(context.envelope.requestsAcknowledgement)
+    }
+
+    func testAPRSReplyAckCapabilityMarkerWithoutPiggybackedAck() throws {
+        let service = APRSService()
+        let packet = try service.makeMessage(
+            from: "WX4ATL-5",
+            to: "N0CALL-1",
+            body: "Reply ACK capable",
+            identifier: "A1"
+        )
+        let envelope = try XCTUnwrap(service.messageContext(packet: packet)?.envelope)
+
+        XCTAssertEqual(envelope.rawIdentifier, "A1}")
+        XCTAssertEqual(envelope.baseIdentifier, "A1")
+        XCTAssertNil(envelope.replyAcknowledgementIdentifier)
+        XCTAssertTrue(envelope.requestsAcknowledgement)
+    }
+
+    func testAPRSAcknowledgementAndUnnumberedMessageParsing() throws {
+        let service = APRSService()
+        let acknowledgement = try service.makeAcknowledgement(
+            from: "N0CALL-1",
+            to: "WX4ATL-7",
+            identifier: "0A}1B"
+        )
+        let ackEnvelope = try XCTUnwrap(service.messageContext(packet: acknowledgement)?.envelope)
+        let unnumbered = try service.makeMessage(
+            from: "N0CALL-1",
+            to: "WX4ATL-7",
+            body: "No ACK requested",
+            identifier: nil
+        )
+        let unnumberedEnvelope = try XCTUnwrap(service.messageContext(packet: unnumbered)?.envelope)
+
+        XCTAssertEqual(ackEnvelope.kind, .acknowledgement)
+        XCTAssertEqual(ackEnvelope.baseIdentifier, "0A")
+        XCTAssertEqual(ackEnvelope.replyAcknowledgementIdentifier, "1B")
+        XCTAssertFalse(unnumberedEnvelope.requestsAcknowledgement)
+        XCTAssertNil(unnumberedEnvelope.rawIdentifier)
+    }
+
+    func testAPRSThirdPartyMessagePreservesOriginalSenderForAcknowledgement() throws {
+        let service = APRSService()
+        let packet = try makeAPRSPacket(
+            source: "IGATE",
+            info: "}N0CALL-1>APRS,TCPIP,IGATE*::WX4ATL-7 :Via IGate{Z9}"
+        )
+        let context = try XCTUnwrap(service.messageContext(packet: packet))
+        let parsed = service.parse(packet: packet)
+
+        XCTAssertEqual(context.source, "N0CALL-1")
+        XCTAssertEqual(context.envelope.baseIdentifier, "Z9")
+        XCTAssertTrue(context.envelope.requestsAcknowledgement)
+        XCTAssertEqual(parsed.type, .message)
+        XCTAssertEqual(parsed.from, "N0CALL-1")
+        XCTAssertEqual(parsed.body, "Via IGate")
+    }
+
+    func testAPRSRetryPolicyUsesRecommendedDecayingIntervals() {
+        XCTAssertEqual(APRSRetryPolicy.retryIntervals, [15, 30, 60, 120, 240])
+        XCTAssertEqual(APRSRetryPolicy.duplicateAcknowledgementMinimumSpacing, 30)
+        XCTAssertEqual(APRSRetryPolicy.finalAcknowledgementGrace, 30)
+        XCTAssertEqual(APRSService.compactMessageIdentifier(0), "00")
+        XCTAssertEqual(APRSService.compactMessageIdentifier(35), "0Z")
+        XCTAssertEqual(APRSService.compactMessageIdentifier(36), "10")
     }
 
     func testAPRSPositionRoundTrip() throws {
@@ -383,6 +471,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertFalse(settings.blePowerDefaultMigrated)
         XCTAssertFalse(settings.rxPowerSaveEnabled)
         XCTAssertEqual(settings.rxPowerSaveProfile, "Balanced")
+        XCTAssertTrue(settings.aprsMessageAcknowledgementsEnabled)
     }
 
     func testPowerSaveFlagsUseReservedHostStateBits() {

@@ -48,6 +48,7 @@ struct AppSettings: Codable, Equatable {
     var aprsStatusComment = "KV4P/ATL"
     var exposeKISSTNC = false
     var packetRetentionSeconds = 86_400.0
+    var aprsMessageAcknowledgementsEnabled = true
     var bandwidth = "25kHz"
     var directTxFrequency = "146.5200"
     var directRxFrequency = "146.5200"
@@ -86,6 +87,7 @@ struct AppSettings: Codable, Equatable {
         aprsStatusComment = try container.decodeIfPresent(String.self, forKey: .aprsStatusComment) ?? aprsStatusComment
         exposeKISSTNC = try container.decodeIfPresent(Bool.self, forKey: .exposeKISSTNC) ?? exposeKISSTNC
         packetRetentionSeconds = try container.decodeIfPresent(Double.self, forKey: .packetRetentionSeconds) ?? packetRetentionSeconds
+        aprsMessageAcknowledgementsEnabled = try container.decodeIfPresent(Bool.self, forKey: .aprsMessageAcknowledgementsEnabled) ?? aprsMessageAcknowledgementsEnabled
         bandwidth = try container.decodeIfPresent(String.self, forKey: .bandwidth) ?? bandwidth
         directTxFrequency = try container.decodeIfPresent(String.self, forKey: .directTxFrequency) ?? directTxFrequency
         directRxFrequency = try container.decodeIfPresent(String.self, forKey: .directRxFrequency) ?? directRxFrequency

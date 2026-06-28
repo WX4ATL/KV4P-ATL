@@ -105,6 +105,10 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Toggle("Digipeat (mesh)", isOn: $app.settings.digipeatPackets)
+                Toggle("Reliable APRS messages (ACK/retry)", isOn: $app.settings.aprsMessageAcknowledgementsEnabled)
+                    .onChange(of: app.settings.aprsMessageAcknowledgementsEnabled) { _, enabled in
+                        app.aprsAcknowledgementSettingChanged(enabled: enabled)
+                    }
                 Toggle("Expose standard BLE KISS TNC", isOn: $app.settings.exposeKISSTNC)
                 if app.settings.exposeKISSTNC {
                     Text("KV4P/ATL must disconnect from the radio before the BLE KISS TNC is available to other APRS apps. If KV4P/ATL reconnects while another app is using the radio, one app may be disconnected.")

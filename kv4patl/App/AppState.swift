@@ -38,7 +38,7 @@ final class AppState: ObservableObject {
     private let transmitGate = TransmitGate()
     private let rxAudioUIUpdateGate = RXAudioUIUpdateGate()
     private var transport: KV4PTransport?
-    private var messageNumber = Int.random(in: 0..<100_000)
+    private var messageNumber = Int.random(in: 0..<APRSService.compactMessageIdentifierCount)
     private var activeMemoryId: Int32 = -1
     private var lastAudioDebugDate = Date.distantPast
     private var lastReceiveActivityPublishDate = Date.distantPast
@@ -60,6 +60,10 @@ final class AppState: ObservableObject {
     private var beaconRestoreTask: Task<Void, Never>?
     private var autoBeaconTask: Task<Void, Never>?
     private var receiveAudioIdleTask: Task<Void, Never>?
+    private var aprsRetryTasks: [UUID: Task<Void, Never>] = [:]
+    private var aprsAcknowledgementTasks: [String: Task<Void, Never>] = [:]
+    private var lastAPRSAcknowledgementSentAt: [String: Date] = [:]
+    private var latestReplyAcknowledgementByStation: [String: String] = [:]
     private var cachedBeaconLocation: CLLocation?
 
     var aprsStations: [APRSStation] {
@@ -125,6 +129,7 @@ final class AppState: ObservableObject {
             }
         }
         configureAPRSBeaconing()
+        resumePendingAPRSMessageRetries()
         if settings.autoConnectOnStartup {
             Task { @MainActor [weak self] in
                 self?.connect()
@@ -523,20 +528,178 @@ final class AppState: ObservableObject {
         schedulePostTransmitReceiveRecovery()
     }
 
-    func sendAPRSMessage(to destination: String, body: String) {
+    @discardableResult
+    func sendAPRSMessage(to destination: String, body: String) -> Bool {
         guard !settings.callsign.isEmpty else {
             statusLine = "Set your callsign before sending APRS."
-            return
+            return false
         }
+
+        let recipient = APRSService.normalizedAddressee(destination)
+        let safeBody = APRSService.sanitizedMessageText(body)
+        guard !safeBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        let requestsAcknowledgement = settings.aprsMessageAcknowledgementsEnabled
+            && !APRSService.isGroupAddressee(recipient)
+        let identifier = requestsAcknowledgement
+            ? APRSService.compactMessageIdentifier(messageNumber)
+            : nil
+        let replyAck = requestsAcknowledgement
+            ? latestReplyAcknowledgementByStation[normalizedStation(recipient)]
+            : nil
+
         do {
-            let packet = try aprs.makeMessage(from: settings.callsign, to: destination, body: body, number: messageNumber)
-            messageNumber = (messageNumber + 1) % 100_000
+            let packet = try aprs.makeMessage(
+                from: settings.callsign,
+                to: recipient,
+                body: safeBody,
+                identifier: identifier,
+                replyAcknowledgementIdentifier: replyAck
+            )
+            messageNumber = (messageNumber + 1) % APRSService.compactMessageIdentifierCount
             sendAX25(packet.encodedUIFrame())
-            let message = APRSMessage(type: .message, from: settings.callsign, to: destination.isEmpty ? APRSService.defaultRecipient : destination, body: body, timestamp: Date())
+            let message = APRSMessage(
+                type: .message,
+                from: settings.callsign,
+                to: recipient,
+                body: safeBody,
+                timestamp: Date(),
+                messageIdentifier: identifier,
+                deliveryState: requestsAcknowledgement ? .pending : .none,
+                retriesRemaining: requestsAcknowledgement ? APRSRetryPolicy.retryIntervals.count : nil,
+                transmitAttempts: 1
+            )
             messages.append(message)
             saveAPRSMessages()
+            if requestsAcknowledgement {
+                scheduleAPRSRetry(messageID: message.id, retryIndex: 0)
+            }
+            return true
         } catch {
             statusLine = error.localizedDescription
+            return false
+        }
+    }
+
+    func aprsAcknowledgementSettingChanged(enabled: Bool) {
+        guard !enabled else { return }
+        for task in aprsRetryTasks.values {
+            task.cancel()
+        }
+        aprsRetryTasks.removeAll()
+        for index in messages.indices where messages[index].deliveryState == .pending {
+            messages[index].deliveryState = .none
+            messages[index].retriesRemaining = nil
+        }
+        saveAPRSMessages()
+    }
+
+    private func resumePendingAPRSMessageRetries() {
+        guard settings.aprsMessageAcknowledgementsEnabled,
+              !ProcessInfo.processInfo.arguments.contains("--qa-aprs-sample-packets") else {
+            return
+        }
+        for message in messages where message.deliveryState == .pending {
+            let remaining = min(
+                APRSRetryPolicy.retryIntervals.count,
+                max(0, message.retriesRemaining ?? APRSRetryPolicy.retryIntervals.count)
+            )
+            if remaining == 0 {
+                scheduleAPRSFailure(messageID: message.id)
+            } else {
+                let retryIndex = APRSRetryPolicy.retryIntervals.count - remaining
+                scheduleAPRSRetry(messageID: message.id, retryIndex: retryIndex)
+            }
+        }
+    }
+
+    private func scheduleAPRSRetry(messageID: UUID, retryIndex: Int, delayOverride: TimeInterval? = nil) {
+        guard retryIndex < APRSRetryPolicy.retryIntervals.count else {
+            scheduleAPRSFailure(messageID: messageID)
+            return
+        }
+        aprsRetryTasks[messageID]?.cancel()
+        let delay = delayOverride ?? APRSRetryPolicy.retryIntervals[retryIndex]
+        aprsRetryTasks[messageID] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.performAPRSRetry(messageID: messageID, retryIndex: retryIndex)
+        }
+    }
+
+    private func performAPRSRetry(messageID: UUID, retryIndex: Int) {
+        guard settings.aprsMessageAcknowledgementsEnabled,
+              let index = messages.firstIndex(where: { $0.id == messageID }),
+              messages[index].deliveryState == .pending,
+              let identifier = messages[index].messageIdentifier else {
+            aprsRetryTasks[messageID] = nil
+            return
+        }
+        guard transportIsConnected else {
+            scheduleAPRSRetry(messageID: messageID, retryIndex: retryIndex, delayOverride: APRSRetryPolicy.retryIntervals[0])
+            return
+        }
+
+        let message = messages[index]
+        let replyAck = latestReplyAcknowledgementByStation[normalizedStation(message.to)]
+        do {
+            let packet = try aprs.makeMessage(
+                from: message.from,
+                to: message.to,
+                body: message.body,
+                identifier: identifier,
+                replyAcknowledgementIdentifier: replyAck
+            )
+            sendAX25(packet.encodedUIFrame()) { [weak self] succeeded in
+                guard let self else { return }
+                if succeeded {
+                    self.noteSuccessfulAPRSRetry(messageID: messageID, retryIndex: retryIndex)
+                } else {
+                    self.scheduleAPRSRetry(
+                        messageID: messageID,
+                        retryIndex: retryIndex,
+                        delayOverride: APRSRetryPolicy.retryIntervals[0]
+                    )
+                }
+            }
+        } catch {
+            statusLine = error.localizedDescription
+            scheduleAPRSRetry(messageID: messageID, retryIndex: retryIndex, delayOverride: APRSRetryPolicy.retryIntervals[0])
+        }
+    }
+
+    private func noteSuccessfulAPRSRetry(messageID: UUID, retryIndex: Int) {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }),
+              messages[index].deliveryState == .pending else {
+            return
+        }
+        messages[index].transmitAttempts += 1
+        let remaining = APRSRetryPolicy.retryIntervals.count - retryIndex - 1
+        messages[index].retriesRemaining = remaining
+        saveAPRSMessages()
+        if remaining > 0 {
+            scheduleAPRSRetry(messageID: messageID, retryIndex: retryIndex + 1)
+        } else {
+            scheduleAPRSFailure(messageID: messageID)
+        }
+    }
+
+    private func scheduleAPRSFailure(messageID: UUID) {
+        aprsRetryTasks[messageID]?.cancel()
+        aprsRetryTasks[messageID] = Task { [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64(APRSRetryPolicy.finalAcknowledgementGrace * 1_000_000_000)
+            )
+            guard !Task.isCancelled, let self,
+                  let index = self.messages.firstIndex(where: { $0.id == messageID }),
+                  self.messages[index].deliveryState == .pending else {
+                return
+            }
+            self.messages[index].deliveryState = .failed
+            self.messages[index].retriesRemaining = 0
+            self.aprsRetryTasks[messageID] = nil
+            self.saveAPRSMessages()
         }
     }
 
@@ -654,14 +817,202 @@ final class AppState: ObservableObject {
                 if settings.digipeatPackets, deduper.shouldDigipeat(packet) {
                     sendAX25(packet.encodedUIFrame())
                 }
-                messages.append(aprs.parse(packet: packet))
-                saveAPRSMessages()
+                processReceivedAPRSPacket(packet)
             }
         case .debug(let message):
             lastDebugLine = message
         case .windowUpdate:
             break
         }
+    }
+
+    private func processReceivedAPRSPacket(_ packet: AX25Packet) {
+        guard let context = aprs.messageContext(packet: packet) else {
+            messages.append(aprs.parse(packet: packet))
+            saveAPRSMessages()
+            return
+        }
+
+        let envelope = context.envelope
+        let addressedToUs = stationsMatch(envelope.addressee, settings.callsign)
+        if addressedToUs, let replyAck = envelope.replyAcknowledgementIdentifier {
+            markOutgoingAPRSMessage(
+                identifier: replyAck,
+                remoteStation: context.source,
+                state: .acknowledged
+            )
+        }
+
+        switch envelope.kind {
+        case .acknowledgement:
+            if addressedToUs, let identifier = envelope.baseIdentifier {
+                markOutgoingAPRSMessage(
+                    identifier: identifier,
+                    remoteStation: context.source,
+                    state: .acknowledged
+                )
+            }
+            return
+        case .rejection:
+            if addressedToUs, let identifier = envelope.baseIdentifier {
+                markOutgoingAPRSMessage(
+                    identifier: identifier,
+                    remoteStation: context.source,
+                    state: .failed
+                )
+            }
+            return
+        case .content:
+            break
+        }
+
+        var parsed = aprs.parse(packet: packet)
+        if addressedToUs,
+           envelope.requestsAcknowledgement,
+           let rawIdentifier = envelope.rawIdentifier,
+           let baseIdentifier = envelope.baseIdentifier {
+            // A trailing "}" is the APRS 1.1 capability signal. Legacy numbered
+            // messages still receive a normal ACK but must not get Reply-ACK data.
+            if rawIdentifier.contains("}") {
+                latestReplyAcknowledgementByStation[normalizedStation(context.source)] = baseIdentifier
+            }
+            if let existingIndex = messages.lastIndex(where: {
+                $0.type == .message
+                    && stationsMatch($0.from, context.source)
+                    && $0.messageIdentifier?.caseInsensitiveCompare(baseIdentifier) == .orderedSame
+            }) {
+                scheduleAPRSAcknowledgement(
+                    messageID: messages[existingIndex].id,
+                    to: context.source,
+                    rawIdentifier: rawIdentifier
+                )
+                return
+            }
+
+            parsed.deliveryState = .none
+            parsed.messageIdentifier = baseIdentifier
+            messages.append(parsed)
+            saveAPRSMessages()
+            scheduleAPRSAcknowledgement(
+                messageID: parsed.id,
+                to: context.source,
+                rawIdentifier: rawIdentifier
+            )
+            return
+        }
+
+        messages.append(parsed)
+        saveAPRSMessages()
+    }
+
+    private func markOutgoingAPRSMessage(
+        identifier: String,
+        remoteStation: String,
+        state: APRSDeliveryState
+    ) {
+        guard let index = messages.lastIndex(where: {
+            $0.type == .message
+                && $0.deliveryState == .pending
+                && stationsMatch($0.to, remoteStation)
+                && stationsMatch($0.from, settings.callsign)
+                && $0.messageIdentifier?.caseInsensitiveCompare(identifier) == .orderedSame
+        }) else {
+            return
+        }
+        aprsRetryTasks[messages[index].id]?.cancel()
+        aprsRetryTasks[messages[index].id] = nil
+        messages[index].deliveryState = state
+        messages[index].acknowledged = state == .acknowledged
+        messages[index].retriesRemaining = nil
+        saveAPRSMessages()
+    }
+
+    private func scheduleAPRSAcknowledgement(
+        messageID: UUID,
+        to station: String,
+        rawIdentifier: String,
+        minimumDelay: TimeInterval = APRSRetryPolicy.acknowledgementTransmitDelay
+    ) {
+        let baseIdentifier = rawIdentifier.split(separator: "}", maxSplits: 1).first.map(String.init) ?? rawIdentifier
+        let key = "\(normalizedStation(station))|\(baseIdentifier.uppercased())"
+        guard aprsAcknowledgementTasks[key] == nil else { return }
+        let now = Date()
+        let earliestFromDuplicate = lastAPRSAcknowledgementSentAt[key]?
+            .addingTimeInterval(APRSRetryPolicy.duplicateAcknowledgementMinimumSpacing)
+            ?? now
+        let targetDate = max(
+            now.addingTimeInterval(minimumDelay),
+            earliestFromDuplicate
+        )
+        let delay = max(0, targetDate.timeIntervalSince(now))
+        aprsAcknowledgementTasks[key] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.transmitAPRSAcknowledgement(
+                key: key,
+                messageID: messageID,
+                to: station,
+                rawIdentifier: rawIdentifier
+            )
+        }
+    }
+
+    private func transmitAPRSAcknowledgement(
+        key: String,
+        messageID: UUID,
+        to station: String,
+        rawIdentifier: String
+    ) {
+        guard !settings.callsign.isEmpty else {
+            aprsAcknowledgementTasks[key] = nil
+            return
+        }
+        guard transportIsConnected else {
+            aprsAcknowledgementTasks[key] = nil
+            scheduleAPRSAcknowledgement(
+                messageID: messageID,
+                to: station,
+                rawIdentifier: rawIdentifier,
+                minimumDelay: APRSRetryPolicy.retryIntervals[0]
+            )
+            return
+        }
+        do {
+            let packet = try aprs.makeAcknowledgement(
+                from: settings.callsign,
+                to: station,
+                identifier: rawIdentifier
+            )
+            sendAX25(packet.encodedUIFrame()) { [weak self] succeeded in
+                guard let self else { return }
+                self.aprsAcknowledgementTasks[key] = nil
+                if succeeded {
+                    self.lastAPRSAcknowledgementSentAt[key] = Date()
+                    if let index = self.messages.firstIndex(where: { $0.id == messageID }) {
+                        self.messages[index].deliveryState = .acknowledgementSent
+                        self.saveAPRSMessages()
+                    }
+                } else {
+                    self.scheduleAPRSAcknowledgement(
+                        messageID: messageID,
+                        to: station,
+                        rawIdentifier: rawIdentifier,
+                        minimumDelay: APRSRetryPolicy.retryIntervals[0]
+                    )
+                }
+            }
+        } catch {
+            aprsAcknowledgementTasks[key] = nil
+            statusLine = error.localizedDescription
+        }
+    }
+
+    private func normalizedStation(_ station: String) -> String {
+        station.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    private func stationsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        !lhs.isEmpty && !rhs.isEmpty && normalizedStation(lhs) == normalizedStation(rhs)
     }
 
     private func applyMemory(_ memory: ChannelMemory) {
@@ -927,14 +1278,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func sendAX25(_ frame: Data, after delay: TimeInterval = 0) {
+    private func sendAX25(
+        _ frame: Data,
+        after delay: TimeInterval = 0,
+        completion: (@MainActor @Sendable (Bool) -> Void)? = nil
+    ) {
         let radioQueue = radioQueue
         let radioProtocol = radioProtocol
         let work: @Sendable () -> Void = { [weak self, radioProtocol, frame] in
             do {
                 try radioProtocol.sendAX25(frame)
+                if let completion {
+                    Task { @MainActor in completion(true) }
+                }
             } catch {
-                Task { @MainActor in self?.statusLine = error.localizedDescription }
+                Task { @MainActor in
+                    self?.statusLine = error.localizedDescription
+                    completion?(false)
+                }
             }
         }
         if delay > 0 {
@@ -1373,6 +1734,48 @@ final class AppState: ObservableObject {
     private static func makeQASampleAPRSMessages() -> [APRSMessage] {
         let now = Date()
         return [
+            APRSMessage(
+                type: .message,
+                from: "WX4ATL-5",
+                to: "N0CALL-1",
+                body: "Waiting for a delivery acknowledgement",
+                timestamp: now,
+                messageIdentifier: "A1",
+                deliveryState: .pending,
+                retriesRemaining: 3,
+                transmitAttempts: 3
+            ),
+            APRSMessage(
+                type: .message,
+                from: "WX4ATL-5",
+                to: "K4TEST-7",
+                body: "Delivered message",
+                timestamp: now.addingTimeInterval(-20),
+                acknowledged: true,
+                messageIdentifier: "A0",
+                deliveryState: .acknowledged,
+                transmitAttempts: 1
+            ),
+            APRSMessage(
+                type: .message,
+                from: "WX4ATL-5",
+                to: "W4MISS",
+                body: "Message retry limit reached",
+                timestamp: now.addingTimeInterval(-40),
+                messageIdentifier: "9Z",
+                deliveryState: .failed,
+                retriesRemaining: 0,
+                transmitAttempts: 6
+            ),
+            APRSMessage(
+                type: .message,
+                from: "N0CALL-1",
+                to: "WX4ATL-5",
+                body: "Inbound message acknowledged by this station",
+                timestamp: now.addingTimeInterval(-50),
+                messageIdentifier: "B2",
+                deliveryState: .acknowledgementSent
+            ),
             APRSMessage(
                 type: .position,
                 from: "WX4ATL-7",

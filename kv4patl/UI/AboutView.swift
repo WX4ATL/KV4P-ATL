@@ -76,6 +76,8 @@ struct AboutView: View {
         "MultimediaWiki Contributors. \"IMA ADPCM.\" MultimediaWiki, 2026, https://wiki.multimedia.cx/index.php/IMA_ADPCM.",
         "Tucson Amateur Packet Radio Corporation. AX.25 Link Access Protocol for Amateur Packet Radio. Version 2.2, 1997.",
         "APRS Working Group. APRS Protocol Reference. Version 1.0.1, 29 Aug. 2000, https://www.aprs.org/doc/APRS101.PDF.",
+        "APRS Working Group. \"APRS Specification Addendum 1.1.\" APRS.org, 2004, https://www.aprs.org/aprs11.html.",
+        "Bruninga, Bob. \"APRSdos Reply-ACK Mechanism.\" APRS.org, 2004, https://www.aprs.org/aprs11/replyacks.txt.",
         "APRS Working Group. APRS Protocol Reference. Version 1.0.1, 29 Aug. 2000, https://www.ui-view.net/files/APRS101.pdf.",
         "TAPR Software Library. \"APRS Protocol Specification.\" Tucson Amateur Packet Radio, 2026, https://web.tapr.org/software_library/aprs/aprsspec/spec/aprs101/.",
         "Bruninga, Bob, and APRS Contributors. \"APRS 1.2 Draft Specification Repository.\" GitHub, 2026, https://github.com/wb2osz/aprsspec.",

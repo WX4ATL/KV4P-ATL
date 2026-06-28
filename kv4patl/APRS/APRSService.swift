@@ -21,6 +21,46 @@ enum APRSMessageType: String, Codable {
     case raw
 }
 
+enum APRSDeliveryState: String, Codable {
+    case none
+    case pending
+    case acknowledged
+    case failed
+    case acknowledgementSent
+}
+
+struct APRSMessageEnvelope: Equatable {
+    enum Kind: Equatable {
+        case content
+        case acknowledgement
+        case rejection
+    }
+
+    var addressee: String
+    var text: String
+    var rawIdentifier: String?
+    var baseIdentifier: String?
+    var replyAcknowledgementIdentifier: String?
+    var kind: Kind
+
+    var requestsAcknowledgement: Bool {
+        kind == .content && rawIdentifier != nil && !APRSService.isGroupAddressee(addressee)
+    }
+}
+
+struct APRSMessageContext: Equatable {
+    var source: String
+    var envelope: APRSMessageEnvelope
+}
+
+enum APRSRetryPolicy {
+    // APRS 1.1 calls for a 15-second first retry and decaying repetitions.
+    static let retryIntervals: [TimeInterval] = [15, 30, 60, 120, 240]
+    static let finalAcknowledgementGrace: TimeInterval = 30
+    static let duplicateAcknowledgementMinimumSpacing: TimeInterval = 30
+    static let acknowledgementTransmitDelay: TimeInterval = 1
+}
+
 struct APRSDataPoint: Codable, Equatable {
     var label: String
     var value: String
@@ -41,6 +81,10 @@ struct APRSMessage: Identifiable, Codable, Equatable {
     var symbolTable: String?
     var symbolCode: String?
     var acknowledged = false
+    var messageIdentifier: String?
+    var deliveryState: APRSDeliveryState = .none
+    var retriesRemaining: Int?
+    var transmitAttempts = 0
     var dataPoints: [APRSDataPoint] = []
 
     var symbol: APRSSymbol? {
@@ -61,6 +105,10 @@ struct APRSMessage: Identifiable, Codable, Equatable {
         symbolTable: String? = nil,
         symbolCode: String? = nil,
         acknowledged: Bool = false,
+        messageIdentifier: String? = nil,
+        deliveryState: APRSDeliveryState = .none,
+        retriesRemaining: Int? = nil,
+        transmitAttempts: Int = 0,
         dataPoints: [APRSDataPoint] = []
     ) {
         self.id = id
@@ -75,6 +123,10 @@ struct APRSMessage: Identifiable, Codable, Equatable {
         self.symbolTable = symbolTable
         self.symbolCode = symbolCode
         self.acknowledged = acknowledged
+        self.messageIdentifier = messageIdentifier
+        self.deliveryState = deliveryState
+        self.retriesRemaining = retriesRemaining
+        self.transmitAttempts = transmitAttempts
         self.dataPoints = dataPoints
     }
 
@@ -91,6 +143,10 @@ struct APRSMessage: Identifiable, Codable, Equatable {
         case symbolTable
         case symbolCode
         case acknowledged
+        case messageIdentifier
+        case deliveryState
+        case retriesRemaining
+        case transmitAttempts
         case dataPoints
     }
 
@@ -108,6 +164,11 @@ struct APRSMessage: Identifiable, Codable, Equatable {
         symbolTable = try container.decodeIfPresent(String.self, forKey: .symbolTable)
         symbolCode = try container.decodeIfPresent(String.self, forKey: .symbolCode)
         acknowledged = try container.decodeIfPresent(Bool.self, forKey: .acknowledged) ?? false
+        messageIdentifier = try container.decodeIfPresent(String.self, forKey: .messageIdentifier)
+        deliveryState = try container.decodeIfPresent(APRSDeliveryState.self, forKey: .deliveryState)
+            ?? (acknowledged ? .acknowledged : .none)
+        retriesRemaining = try container.decodeIfPresent(Int.self, forKey: .retriesRemaining)
+        transmitAttempts = try container.decodeIfPresent(Int.self, forKey: .transmitAttempts) ?? 0
         dataPoints = try container.decodeIfPresent([APRSDataPoint].self, forKey: .dataPoints) ?? []
     }
 }
@@ -135,6 +196,8 @@ struct APRSStation: Identifiable, Equatable {
 struct APRSService {
     static let defaultDigipeaters = ["WIDE1-1", "WIDE2-1"]
     static let defaultRecipient = "BLN1CQ"
+    static let maxMessageTextLength = 67
+    static let compactMessageIdentifierCount = 36 * 36
 
     static func adjustedCoordinate(_ coordinate: CLLocationCoordinate2D, accuracySetting: String) -> CLLocationCoordinate2D {
         guard accuracySetting == "Approx" else { return coordinate }
@@ -156,10 +219,71 @@ struct APRSService {
         }
     }
 
+    static func sanitizedMessageText(_ body: String) -> String {
+        let printable = body.unicodeScalars.compactMap { scalar -> Character? in
+            guard scalar.value >= 0x20, scalar.value <= 0x7e,
+                  scalar != "|", scalar != "~", scalar != "{" else {
+                return scalar == "\n" || scalar == "\r" ? " " : nil
+            }
+            return Character(scalar)
+        }
+        return String(String(printable).prefix(maxMessageTextLength))
+    }
+
+    static func compactMessageIdentifier(_ value: Int) -> String {
+        let alphabet = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        let normalized = ((value % compactMessageIdentifierCount) + compactMessageIdentifierCount) % compactMessageIdentifierCount
+        return String([alphabet[normalized / alphabet.count], alphabet[normalized % alphabet.count]])
+    }
+
+    static func normalizedAddressee(_ destination: String) -> String {
+        let recipient = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String((recipient.isEmpty ? defaultRecipient : recipient).uppercased().prefix(9))
+    }
+
+    static func isGroupAddressee(_ addressee: String) -> Bool {
+        let normalized = addressee.uppercased()
+        return normalized.hasPrefix("BLN") || normalized == "ALL" || normalized == "QST" || normalized == "CQ"
+    }
+
+    func makeMessage(
+        from source: String,
+        to destination: String,
+        body: String,
+        identifier: String?,
+        replyAcknowledgementIdentifier: String? = nil,
+        digipeaters: [String] = defaultDigipeaters
+    ) throws -> AX25Packet {
+        let safeBody = Self.sanitizedMessageText(body)
+        let recipient = Self.normalizedAddressee(destination)
+        let identifierSuffix: String
+        if let identifier, !Self.isGroupAddressee(recipient) {
+            let compactIdentifier = String(identifier.uppercased().prefix(2))
+            let replyAck = replyAcknowledgementIdentifier.map { String($0.uppercased().prefix(2)) } ?? ""
+            identifierSuffix = "{\(compactIdentifier)}\(replyAck)"
+        } else {
+            identifierSuffix = ""
+        }
+        let info = ":\(recipient.padding(toLength: 9, withPad: " ", startingAt: 0)):\(safeBody)\(identifierSuffix)"
+        return try makePacket(source: source, destination: "APRS", digipeaters: digipeaters, info: info)
+    }
+
     func makeMessage(from source: String, to destination: String, body: String, number: Int, digipeaters: [String] = defaultDigipeaters) throws -> AX25Packet {
-        let safeBody = String(body.prefix(67))
-        let recipient = destination.isEmpty ? Self.defaultRecipient : destination.uppercased()
+        let safeBody = Self.sanitizedMessageText(body)
+        let recipient = Self.normalizedAddressee(destination)
         let info = ":\(recipient.padding(toLength: 9, withPad: " ", startingAt: 0)):\(safeBody){\(String(format: "%05d", number % 100_000))"
+        return try makePacket(source: source, destination: "APRS", digipeaters: digipeaters, info: info)
+    }
+
+    func makeAcknowledgement(
+        from source: String,
+        to destination: String,
+        identifier: String,
+        digipeaters: [String] = defaultDigipeaters
+    ) throws -> AX25Packet {
+        let recipient = Self.normalizedAddressee(destination)
+        let safeIdentifier = String(identifier.prefix(5))
+        let info = ":\(recipient.padding(toLength: 9, withPad: " ", startingAt: 0)):ack\(safeIdentifier)"
         return try makePacket(source: source, destination: "APRS", digipeaters: digipeaters, info: info)
     }
 
@@ -171,6 +295,9 @@ struct APRSService {
     func parse(packet: AX25Packet) -> APRSMessage {
         let body = String(decoding: packet.information, as: UTF8.self)
         let relay = packet.digipeaters.first(where: { $0.hasBeenRepeated })?.display
+        if body.first == "}", let context = messageContext(packet: packet) {
+            return messageRecord(from: context, relay: relay, timestamp: Date())
+        }
         return parseInfo(
             body,
             source: packet.source.display,
@@ -179,6 +306,81 @@ struct APRSService {
             relay: relay,
             timestamp: Date(),
             depth: 0
+        )
+    }
+
+    func messageContext(packet: AX25Packet) -> APRSMessageContext? {
+        let body = String(decoding: packet.information, as: UTF8.self)
+        if let envelope = parseMessageEnvelope(body) {
+            return APRSMessageContext(source: packet.source.display, envelope: envelope)
+        }
+
+        guard body.first == "}" else { return nil }
+        let inner = String(body.dropFirst())
+        guard let headerEnd = inner.firstIndex(of: ":"),
+              let sourceEnd = inner.firstIndex(of: ">"),
+              sourceEnd < headerEnd else {
+            return nil
+        }
+        let source = String(inner[..<sourceEnd])
+        let information = String(inner[inner.index(after: headerEnd)...])
+        guard let envelope = parseMessageEnvelope(information) else { return nil }
+        return APRSMessageContext(source: source, envelope: envelope)
+    }
+
+    func parseMessageEnvelope(_ body: String) -> APRSMessageEnvelope? {
+        guard body.first == ":", body.count >= 11 else { return nil }
+        let toStart = body.index(after: body.startIndex)
+        guard let toEnd = body.index(toStart, offsetBy: 9, limitedBy: body.endIndex),
+              toEnd < body.endIndex,
+              body[toEnd] == ":" else {
+            return nil
+        }
+
+        let addressee = String(body[toStart..<toEnd]).trimmingCharacters(in: .whitespaces)
+        let messageStart = body.index(after: toEnd)
+        let rawText = String(body[messageStart...])
+        let lowercase = rawText.lowercased()
+
+        if lowercase.hasPrefix("ack") || lowercase.hasPrefix("rej") {
+            let kind: APRSMessageEnvelope.Kind = lowercase.hasPrefix("ack") ? .acknowledgement : .rejection
+            let rawIdentifier = String(rawText.dropFirst(3).prefix(5))
+            guard !rawIdentifier.isEmpty else { return nil }
+            let parts = rawIdentifier.split(separator: "}", maxSplits: 1, omittingEmptySubsequences: false)
+            return APRSMessageEnvelope(
+                addressee: addressee,
+                text: rawText,
+                rawIdentifier: rawIdentifier,
+                baseIdentifier: parts.first.map(String.init),
+                replyAcknowledgementIdentifier: parts.count > 1 && !parts[1].isEmpty ? String(parts[1]) : nil,
+                kind: kind
+            )
+        }
+
+        var text = rawText
+        var rawIdentifier: String?
+        var baseIdentifier: String?
+        var replyAcknowledgementIdentifier: String?
+        if let marker = rawText.lastIndex(of: "{") {
+            let candidate = String(rawText[rawText.index(after: marker)...])
+            if isValidMessageIdentifier(candidate) {
+                text = String(rawText[..<marker])
+                rawIdentifier = candidate
+                let parts = candidate.split(separator: "}", maxSplits: 1, omittingEmptySubsequences: false)
+                baseIdentifier = parts.first.map(String.init)
+                if parts.count > 1, !parts[1].isEmpty {
+                    replyAcknowledgementIdentifier = String(parts[1])
+                }
+            }
+        }
+
+        return APRSMessageEnvelope(
+            addressee: addressee,
+            text: text,
+            rawIdentifier: rawIdentifier,
+            baseIdentifier: baseIdentifier,
+            replyAcknowledgementIdentifier: replyAcknowledgementIdentifier,
+            kind: .content
         )
     }
 
@@ -197,8 +399,14 @@ struct APRSService {
         }
 
         if dataType == ":" {
-            let parsed = parseMessageInfo(body)
-            return APRSMessage(type: .message, from: source, to: parsed.to, body: parsed.text, timestamp: timestamp, relay: relay, acknowledged: parsed.acknowledged)
+            guard let envelope = parseMessageEnvelope(body) else {
+                return APRSMessage(type: .invalid, from: source, to: destination, body: body, timestamp: timestamp, relay: relay)
+            }
+            return messageRecord(
+                from: APRSMessageContext(source: source, envelope: envelope),
+                relay: relay,
+                timestamp: timestamp
+            )
         }
 
         if dataType == "!" || dataType == "=" || dataType == "/" || dataType == "@" {
@@ -303,21 +511,39 @@ struct APRSService {
         return String(format: "%03d%05.2f%@", degrees, minutes, hemisphere)
     }
 
-    private func parseMessageInfo(_ body: String) -> (to: String, text: String, acknowledged: Bool) {
-        let toStart = body.index(after: body.startIndex)
-        let toEnd = body.index(toStart, offsetBy: min(9, body.distance(from: toStart, to: body.endIndex)), limitedBy: body.endIndex) ?? body.endIndex
-        let to = String(body[toStart..<toEnd]).trimmingCharacters(in: .whitespaces)
-        let hasSeparator = toEnd < body.endIndex && body[toEnd] == ":"
-        let messageStart = hasSeparator ? body.index(after: toEnd) : toEnd
-        let text = String(body[messageStart...])
+    private func messageRecord(from context: APRSMessageContext, relay: String?, timestamp: Date) -> APRSMessage {
+        let envelope = context.envelope
+        let displayText: String
+        if envelope.addressee.hasPrefix("BLN") {
+            displayText = "bulletin \(envelope.addressee) - \(envelope.text)"
+        } else if envelope.kind == .acknowledgement || envelope.kind == .rejection {
+            displayText = "message \(envelope.text)"
+        } else {
+            displayText = envelope.text
+        }
+        return APRSMessage(
+            type: .message,
+            from: context.source,
+            to: envelope.addressee,
+            body: displayText,
+            timestamp: timestamp,
+            relay: relay,
+            acknowledged: envelope.kind == .acknowledgement,
+            messageIdentifier: envelope.baseIdentifier
+        )
+    }
 
-        if to.hasPrefix("BLN") {
-            return (to, "bulletin \(to) - \(text)", text.contains("{"))
+    private func isValidMessageIdentifier(_ candidate: String) -> Bool {
+        guard (1...5).contains(candidate.count) else { return false }
+        let parts = candidate.split(separator: "}", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let base = parts.first, !base.isEmpty, base.count <= 5,
+              base.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+            return false
         }
-        if text.hasPrefix("ack") || text.hasPrefix("rej") {
-            return (to, "message \(text)", true)
-        }
-        return (to, text, text.contains("{"))
+        if parts.count == 1 { return true }
+        guard parts.count == 2, base.count <= 2 else { return false }
+        let reply = parts[1]
+        return reply.isEmpty || (reply.count <= 2 && reply.allSatisfy { $0.isLetter || $0.isNumber })
     }
 
     private func parsePositionInfo(_ body: String) -> ParsedPosition {
