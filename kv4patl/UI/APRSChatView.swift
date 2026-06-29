@@ -15,6 +15,8 @@ struct APRSChatView: View {
     @EnvironmentObject private var app: AppState
     @State private var recipient = APRSService.defaultRecipient
     @State private var message = ""
+    @State private var composerNotice = ""
+    @State private var sendInProgress = false
     @State private var section: APRSSection
     @State private var mapPosition = MapCameraPosition.automatic
     @FocusState private var focusedComposerField: ComposerField?
@@ -209,6 +211,13 @@ struct APRSChatView: View {
                     messageEditor
                 }
             }
+            if !composerNotice.isEmpty {
+                Text(composerNotice)
+                    .font(.caption)
+                    .foregroundStyle(composerNotice.hasPrefix("Queued") ? Color.gray : Color.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(composerNotice)
+            }
 
             HStack(spacing: 12) {
                 Button {
@@ -252,6 +261,8 @@ struct APRSChatView: View {
                 let sanitized = APRSService.sanitizedMessageText(newValue)
                 if sanitized != newValue {
                     message = sanitized
+                } else if !composerNotice.isEmpty {
+                    composerNotice.removeAll()
                 }
             }
     }
@@ -284,19 +295,28 @@ struct APRSChatView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .keyboardShortcut(.return, modifiers: [.command])
+        .keyboardShortcut(.return, modifiers: [])
         .accessibilityLabel("Send APRS message")
     }
 
     private func sendMessage() {
+        guard !sendInProgress else { return }
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             focusedComposerField = nil
             return
         }
+        sendInProgress = true
+        defer { sendInProgress = false }
         if app.sendAPRSMessage(to: recipient, body: trimmed) {
+            let destination = APRSService.normalizedAddressee(recipient)
             message.removeAll()
             focusedComposerField = nil
+            section = .messages
+            composerNotice = "Queued APRS message to \(destination)."
+        } else {
+            let failure = app.statusLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            composerNotice = failure.isEmpty ? "APRS message was not queued." : failure
         }
     }
 
