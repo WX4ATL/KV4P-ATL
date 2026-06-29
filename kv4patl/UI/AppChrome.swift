@@ -168,7 +168,6 @@ struct RadioActivityPill: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(activityColor, in: Capsule())
-            .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
             .accessibilityLabel("Radio state \(app.radioActivityLabel)")
     }
 

@@ -1,6 +1,6 @@
 KV4P/ATL BLE bridge integration notes
 
-Current shared development version: 0.3.5.
+Current shared development version: 0.3.6.
 
 License
 This BLE bridge overlay is intended to be distributed under GPL-3.0-or-later as
@@ -108,6 +108,11 @@ audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
 APRS Bell 202 receive note
+0.3.6 is an app-side APRS Messages layout polish release. It does not change
+radio protocol or firmware behavior; the firmware and all-in-one flasher are
+versioned with the app so each public release remains a matched, reproducible
+package.
+
 0.3.5 is an app-side APRS Messages UI redesign. It does not change radio
 protocol or firmware behavior; the firmware and all-in-one flasher are
 versioned with the app so each public release remains a matched, reproducible

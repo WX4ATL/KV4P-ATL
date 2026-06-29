@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an Apple-platform
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.3.5.
+Current shared development version: 0.3.6.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -70,6 +70,7 @@ Provisioning notes:
 - Direct target builds with -sdk iphoneos and -sdk iphonesimulator work; a signed device install requires a local Xcode signing setup.
 
 Notes:
+- Version 0.3.6 fixes the APRS conversation layout after the 0.3.5 redesign. Messages now read oldest at the top and newest at the bottom like a normal chat, short conversations anchor to the bottom above the composer, new messages auto-scroll into view, the "Sending" retry label/progress bar aligns with the right edge of outgoing bubbles, and the TX/RX/IDLE activity pill no longer draws an extra shadowed bubble behind it.
 - Version 0.3.5 redesigns the APRS Messages section around iMessage-style incoming and outgoing bubbles. The old colored retry/count/check/question circles are replaced with plain delivery language: "Sending" with a retry progress bar, "Delivered" with a checkmark after an APRS acknowledgement, "Sent but not delivered" after the retry budget is exhausted, and "ACK sent" for inbound messages this station acknowledged.
 - Version 0.3.4 fixes the APRS message composer send path on iPhone and Mac. Pressing Return in the message field or tapping the send button now runs the same guarded send action, successful messages switch to the Messages view with a queued confirmation, and failed sends show the exact blocker inline instead of appearing to do nothing.
 - Version 0.3.3 fixes the APRS composer and shared app state on iPhone and Mac. The APRS message field is now a single-line send field with an inline `#/67` counter so Enter and the send button queue the message cleanly without misaligning the To field. The macOS APRS map now uses a true two-column layout with the map filling the left side above the fixed composer. The app persists the last active voice channel or direct split/tone selection and reapplies it after relaunch/reconnect. APRS messages, retries, acknowledgements, and beacons now all use the selected APRS frequency path instead of only manual beacons honoring that setting.
@@ -90,6 +91,6 @@ Notes:
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: shared macOS protocol tests passed 31/31, iPhone device-SDK build passed, native macOS build and APRS Messages UI QA passed, and the BLE firmware/flasher package was regenerated for shared version 0.3.5. The self-contained web flasher embeds firmware manifest version `0.3.5-fw17-ble`.
+- Current source-build status: shared macOS protocol tests passed 31/31, iPhone device-SDK build passed, native macOS build and APRS Messages UI QA passed, and the BLE firmware/flasher package was regenerated for shared version 0.3.6. The self-contained web flasher embeds firmware manifest version `0.3.6-fw17-ble`.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.

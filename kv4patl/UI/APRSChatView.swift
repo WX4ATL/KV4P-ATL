@@ -32,25 +32,29 @@ struct APRSChatView: View {
             #if os(macOS)
             macSectionContent
             #else
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 12) {
-                    switch section {
-                    case .map:
-                        mapPanel
-                        beaconList
-                    case .messages:
-                        messageList
-                    case .beacons:
-                        beaconList
-                    case .packets:
-                        packetList
+            if section == .messages {
+                messageConversationScroll
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 12) {
+                        switch section {
+                        case .map:
+                            mapPanel
+                            beaconList
+                        case .messages:
+                            EmptyView()
+                        case .beacons:
+                            beaconList
+                        case .packets:
+                            packetList
+                        }
                     }
+                    .padding()
+                    .frame(maxWidth: KV4PTheme.maxContentWidth)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding()
-                .frame(maxWidth: KV4PTheme.maxContentWidth)
-                .frame(maxWidth: .infinity)
+                .scrollIndicators(.visible)
             }
-            .scrollIndicators(.visible)
             #endif
         }
         .safeAreaInset(edge: .bottom) {
@@ -69,18 +73,18 @@ struct APRSChatView: View {
             GeometryReader { proxy in
                 macMapContent(width: proxy.size.width, height: proxy.size.height)
             }
+        } else if section == .messages {
+            messageConversationScroll
         } else {
             ScrollView(.vertical, showsIndicators: true) {
                 Group {
                     switch section {
-                    case .messages:
-                        messageList
+                    case .messages, .map:
+                        EmptyView()
                     case .beacons:
                         beaconList
                     case .packets:
                         packetList
-                    case .map:
-                        EmptyView()
                     }
                 }
                 .padding()
@@ -184,15 +188,63 @@ struct APRSChatView: View {
         }
     }
 
+    private var messageConversationScroll: some View {
+        let messages = app.messages
+            .filter { $0.type == .message }
+            .sorted { lhs, rhs in
+                if lhs.timestamp == rhs.timestamp {
+                    lhs.id.uuidString < rhs.id.uuidString
+                } else {
+                    lhs.timestamp < rhs.timestamp
+                }
+            }
+        return GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: true) {
+                    messageRows(
+                        messages,
+                        emptyTitle: "No APRS messages",
+                        emptySystemImage: "message",
+                        emptyDescription: "Inbound and outbound APRS messages will appear here."
+                    )
+                    .padding()
+                    .frame(maxWidth: KV4PTheme.maxContentWidth)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: messages.isEmpty ? .center : .bottom)
+                }
+                .scrollIndicators(.visible)
+                .onAppear {
+                    scrollToNewestMessage(messages, proxy: proxy, animated: false)
+                }
+                .onChange(of: messages.last?.id) { _, _ in
+                    scrollToNewestMessage(messages, proxy: proxy, animated: true)
+                }
+            }
+        }
+    }
+
     private func messageRows(_ messages: [APRSMessage], emptyTitle: String, emptySystemImage: String, emptyDescription: String) -> some View {
         LazyVStack(spacing: 12) {
             if messages.isEmpty {
                 ContentUnavailableView(emptyTitle, systemImage: emptySystemImage, description: Text(emptyDescription))
                     .padding(.vertical, 48)
             }
-            ForEach(messages.reversed()) { item in
+            ForEach(messages) { item in
                 APRSConversationMessageRow(message: item, localCallsign: app.settings.callsign)
+                    .id(item.id)
             }
+        }
+    }
+
+    private func scrollToNewestMessage(_ messages: [APRSMessage], proxy: ScrollViewProxy, animated: Bool) {
+        guard let latestID = messages.last?.id else { return }
+        let action = {
+            proxy.scrollTo(latestID, anchor: .bottom)
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2), action)
+        } else {
+            action()
         }
     }
 
@@ -495,6 +547,7 @@ struct APRSConversationMessageRow: View {
                     state: message.deliveryState,
                     retriesRemaining: message.retriesRemaining,
                     compact: false,
+                    horizontalAlignment: textAlignment,
                     showPlainSent: isOutgoing && message.deliveryState == .none
                 )
                 .frame(maxWidth: 560, alignment: frameAlignment)
@@ -546,6 +599,7 @@ struct APRSDeliveryStatusLine: View {
     var state: APRSDeliveryState
     var retriesRemaining: Int?
     var compact = false
+    var horizontalAlignment: HorizontalAlignment = .leading
     var showPlainSent = false
 
     var body: some View {
@@ -553,7 +607,7 @@ struct APRSDeliveryStatusLine: View {
             Group {
                 switch state {
                 case .pending:
-                    VStack(alignment: .leading, spacing: compact ? 2 : 4) {
+                    VStack(alignment: horizontalAlignment, spacing: compact ? 2 : 4) {
                         HStack(spacing: 6) {
                             Text("Sending")
                                 .font(statusFont.weight(.medium))
