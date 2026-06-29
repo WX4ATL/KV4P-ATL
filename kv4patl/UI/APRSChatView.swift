@@ -146,7 +146,7 @@ struct APRSChatView: View {
     }
 
     private var messageList: some View {
-        packetRows(
+        messageRows(
             app.messages.filter { $0.type == .message },
             emptyTitle: "No APRS messages",
             emptySystemImage: "message",
@@ -180,6 +180,18 @@ struct APRSChatView: View {
             }
             ForEach(messages.reversed()) { item in
                 APRSMessageRow(message: item, localCallsign: app.settings.callsign)
+            }
+        }
+    }
+
+    private func messageRows(_ messages: [APRSMessage], emptyTitle: String, emptySystemImage: String, emptyDescription: String) -> some View {
+        LazyVStack(spacing: 12) {
+            if messages.isEmpty {
+                ContentUnavailableView(emptyTitle, systemImage: emptySystemImage, description: Text(emptyDescription))
+                    .padding(.vertical, 48)
+            }
+            ForEach(messages.reversed()) { item in
+                APRSConversationMessageRow(message: item, localCallsign: app.settings.callsign)
             }
         }
     }
@@ -372,9 +384,11 @@ struct APRSMessageRow: View {
                         .padding(.vertical, 2)
                         .background(.blue, in: Capsule())
                 }
-                APRSDeliveryBadge(
+                APRSDeliveryStatusLine(
                     state: message.deliveryState,
-                    retriesRemaining: message.retriesRemaining
+                    retriesRemaining: message.retriesRemaining,
+                    compact: true,
+                    showPlainSent: isOutgoing && message.deliveryState == .none
                 )
                 Spacer()
                 Text(message.timestamp, style: .time)
@@ -436,69 +450,182 @@ struct APRSMessageRow: View {
     }
 }
 
-struct APRSDeliveryBadge: View {
-    var state: APRSDeliveryState
-    var retriesRemaining: Int?
+struct APRSConversationMessageRow: View {
+    var message: APRSMessage
+    var localCallsign: String
 
     var body: some View {
-        if state != .none {
-            ZStack {
-                Circle()
-                    .fill(backgroundColor)
-                badgeContent
-                    .font(.caption2.bold())
-                    .foregroundStyle(foregroundColor)
+        HStack(alignment: .bottom, spacing: 8) {
+            if isOutgoing {
+                Spacer(minLength: 42)
             }
-            .frame(width: 23, height: 23)
+
+            VStack(alignment: textAlignment, spacing: 5) {
+                HStack(spacing: 6) {
+                    if !isOutgoing {
+                        Image(systemName: "person.wave.2")
+                            .font(.caption.weight(.semibold))
+                    }
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(message.timestamp, style: .time)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
+
+                Text(displayBody)
+                    .font(.body)
+                    .foregroundStyle(isOutgoing ? .white : .primary)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 9)
+                    .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        if !isOutgoing {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(.secondary.opacity(0.16), lineWidth: 1)
+                        }
+                    }
+                    .frame(maxWidth: 560, alignment: frameAlignment)
+                    .accessibilityLabel(accessibilityMessage)
+
+                APRSDeliveryStatusLine(
+                    state: message.deliveryState,
+                    retriesRemaining: message.retriesRemaining,
+                    compact: false,
+                    showPlainSent: isOutgoing && message.deliveryState == .none
+                )
+                .frame(maxWidth: 560, alignment: frameAlignment)
+            }
+            .frame(maxWidth: .infinity, alignment: frameAlignment)
+
+            if !isOutgoing {
+                Spacer(minLength: 42)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var isOutgoing: Bool {
+        !localCallsign.isEmpty && message.from.uppercased() == localCallsign.uppercased()
+    }
+
+    private var textAlignment: HorizontalAlignment {
+        isOutgoing ? .trailing : .leading
+    }
+
+    private var frameAlignment: Alignment {
+        isOutgoing ? .trailing : .leading
+    }
+
+    private var title: String {
+        isOutgoing ? "To \(message.to)" : message.from
+    }
+
+    private var displayBody: String {
+        message.body.isEmpty ? "(empty APRS message)" : message.body
+    }
+
+    private var accessibilityMessage: String {
+        isOutgoing ? "Outgoing APRS message to \(message.to): \(displayBody)" : "Incoming APRS message from \(message.from): \(displayBody)"
+    }
+
+    private var bubbleBackground: AnyShapeStyle {
+        if isOutgoing {
+            AnyShapeStyle(LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
+        } else {
+            AnyShapeStyle(Color.secondary.opacity(0.14))
+        }
+    }
+}
+
+struct APRSDeliveryStatusLine: View {
+    var state: APRSDeliveryState
+    var retriesRemaining: Int?
+    var compact = false
+    var showPlainSent = false
+
+    var body: some View {
+        if state != .none || showPlainSent {
+            Group {
+                switch state {
+                case .pending:
+                    VStack(alignment: .leading, spacing: compact ? 2 : 4) {
+                        HStack(spacing: 6) {
+                            Text("Sending")
+                                .font(statusFont.weight(.medium))
+                            if compact {
+                                retryProgress
+                                    .frame(width: 68)
+                            }
+                        }
+                        if !compact {
+                            retryProgress
+                                .frame(maxWidth: 168)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                case .acknowledged:
+                    Label("Delivered", systemImage: "checkmark")
+                        .font(statusFont.weight(.medium))
+                        .foregroundStyle(.green)
+                case .failed:
+                    Text("Sent but not delivered")
+                        .font(statusFont.weight(.medium))
+                        .foregroundStyle(.orange)
+                case .acknowledgementSent:
+                    Label("ACK sent", systemImage: "arrow.up")
+                        .font(statusFont.weight(.medium))
+                        .foregroundStyle(.blue)
+                case .none:
+                    if showPlainSent {
+                        Text("Sent")
+                            .font(statusFont.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityText)
             .help(accessibilityText)
         }
     }
 
-    @ViewBuilder
-    private var badgeContent: some View {
-        switch state {
-        case .pending:
-            Text("\(retriesRemaining ?? 0)")
-                .monospacedDigit()
-        case .acknowledged:
-            Image(systemName: "checkmark")
-        case .failed:
-            Image(systemName: "questionmark")
-        case .acknowledgementSent:
-            Image(systemName: "arrow.up")
-        case .none:
-            EmptyView()
-        }
+    private var retryProgress: some View {
+        ProgressView(value: retryFraction)
+            .progressViewStyle(.linear)
+            .tint(.blue)
+            .accessibilityLabel("APRS retry progress")
+            .accessibilityValue("\(Int((retryFraction * 100).rounded())) percent")
     }
 
-    private var backgroundColor: Color {
-        switch state {
-        case .pending: .yellow
-        case .acknowledged: .green
-        case .failed: .red
-        case .acknowledgementSent: .blue
-        case .none: .clear
-        }
+    private var retryFraction: Double {
+        let total = Double(APRSRetryPolicy.retryIntervals.count)
+        guard total > 0 else { return 1 }
+        let remaining = Double(min(max(retriesRemaining ?? APRSRetryPolicy.retryIntervals.count, 0), APRSRetryPolicy.retryIntervals.count))
+        let used = total - remaining
+        return min(1, max(0.08, used / total))
     }
 
-    private var foregroundColor: Color {
-        state == .pending ? .black : .white
+    private var statusFont: Font {
+        compact ? .caption2 : .caption
     }
 
     private var accessibilityText: String {
         switch state {
         case .pending:
-            "Waiting for APRS acknowledgement, \(retriesRemaining ?? 0) retries remaining"
+            "Sending APRS message. \(retriesRemaining ?? 0) retries remain before it is marked sent but not delivered."
         case .acknowledged:
-            "APRS message acknowledged"
+            "Delivered. APRS acknowledgement received."
         case .failed:
-            "APRS message was not acknowledged"
+            "Sent but not delivered. No APRS acknowledgement was received."
         case .acknowledgementSent:
-            "Acknowledgement sent for received APRS message"
+            "Acknowledgement sent for received APRS message."
         case .none:
-            ""
+            showPlainSent ? "Sent without APRS delivery acknowledgement tracking." : ""
         }
     }
 }
