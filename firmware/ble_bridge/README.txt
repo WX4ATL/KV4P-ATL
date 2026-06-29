@@ -108,6 +108,11 @@ audio; this release therefore slows nonessential reporting but does not suppress
 ADPCM frames based on the squelch flag.
 
 APRS Bell 202 receive note
+0.3.3 is an app-side APRS composer, macOS map layout, channel persistence, and
+APRS-frequency routing fix. It does not change radio protocol or firmware
+behavior; the firmware and all-in-one flasher are versioned with the app so
+each public release remains a matched, reproducible package.
+
 0.3.2 adds app-side APRS message acknowledgement, Reply-ACK, retry scheduling,
 and delivery-state UI. It does not change the radio protocol or firmware
 behavior; the firmware and all-in-one flasher are versioned with the app so

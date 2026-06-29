@@ -105,13 +105,7 @@ final class AppState: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--qa-aprs-sample-packets") {
             messages = Self.makeQASampleAPRSMessages()
         }
-        activeFrequency = memories.first?.frequency ?? 146.5200
-        activeMemoryName = memories.first?.name ?? "Welcome to"
-        activeRxFrequency = activeFrequency
-        activeTxFrequency = memories.first?.txFrequency ?? activeFrequency
-        activeTxTone = memories.first?.txTone ?? settings.directTxTone
-        activeRxTone = memories.first?.rxTone ?? settings.directRxTone
-        activeMemoryId = memories.first?.radioMemoryId ?? -1
+        restoreInitialActiveChannel()
 
         let audioEngine = audio
         let rxAudioUIUpdateGate = rxAudioUIUpdateGate
@@ -289,6 +283,12 @@ final class AppState: ObservableObject {
     func deleteMemory(_ memory: ChannelMemory) {
         memories.removeAll { $0.id == memory.id }
         store.saveMemories(memories)
+        if activeMemoryId == memory.radioMemoryId {
+            activeMemoryId = -1
+            activeMemoryName = "Direct"
+            persistActiveDirectSelection()
+            applySettingsToRadio()
+        }
     }
 
     func updateMemory(_ memory: ChannelMemory) {
@@ -307,11 +307,40 @@ final class AppState: ObservableObject {
         }
     }
 
-    func tune(_ memory: ChannelMemory) {
-        if let message = frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) {
-            statusLine = message
+    private func restoreInitialActiveChannel() {
+        if settings.lastChannelSource == Self.channelSourceMemory,
+           let lastMemoryId = settings.lastMemoryId,
+           let memory = memories.first(where: { $0.radioMemoryId == lastMemoryId }) {
+            setActiveChannel(memory: memory)
             return
         }
+
+        if settings.lastChannelSource == Self.channelSourceMemory,
+           settings.lastMemoryId == nil,
+           let firstMemory = memories.first {
+            setActiveChannel(memory: firstMemory)
+            persistActiveMemorySelection(firstMemory)
+            return
+        }
+
+        let rx = Float(settings.lastActiveRxFrequency)
+            ?? Float(settings.directRxFrequency)
+            ?? memories.first?.frequency
+            ?? 146.5200
+        let tx = Float(settings.lastActiveTxFrequency)
+            ?? Float(settings.directTxFrequency)
+            ?? rx
+        let channelName = settings.lastActiveChannelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        setActiveDirectChannel(
+            rx: rx,
+            tx: tx,
+            txTone: settings.lastActiveTxTone,
+            rxTone: settings.lastActiveRxTone,
+            channelName: channelName.isEmpty ? "Direct" : channelName
+        )
+    }
+
+    private func setActiveChannel(memory: ChannelMemory) {
         activeFrequency = memory.frequency
         activeMemoryName = memory.name
         activeMemoryId = memory.radioMemoryId
@@ -319,6 +348,46 @@ final class AppState: ObservableObject {
         activeTxFrequency = memory.txFrequency
         activeTxTone = RadioToneHelper.normalize(memory.txTone)
         activeRxTone = RadioToneHelper.normalize(memory.rxTone)
+    }
+
+    private func setActiveDirectChannel(rx: Float, tx: Float, txTone: String, rxTone: String, channelName: String = "Direct") {
+        activeFrequency = rx
+        activeRxFrequency = rx
+        activeTxFrequency = tx
+        activeTxTone = RadioToneHelper.normalize(txTone)
+        activeRxTone = RadioToneHelper.normalize(rxTone)
+        activeMemoryId = -1
+        activeMemoryName = channelName
+    }
+
+    private func persistActiveMemorySelection(_ memory: ChannelMemory) {
+        settings.lastChannelSource = Self.channelSourceMemory
+        settings.lastMemoryId = memory.radioMemoryId
+        persistActiveChannelSnapshot(name: memory.name)
+    }
+
+    private func persistActiveDirectSelection() {
+        settings.lastChannelSource = Self.channelSourceDirect
+        settings.lastMemoryId = nil
+        persistActiveChannelSnapshot(name: activeMemoryName)
+    }
+
+    private func persistActiveChannelSnapshot(name: String) {
+        settings.lastActiveRxFrequency = String(format: "%.4f", activeRxFrequency)
+        settings.lastActiveTxFrequency = String(format: "%.4f", activeTxFrequency)
+        settings.lastActiveTxTone = activeTxTone
+        settings.lastActiveRxTone = activeRxTone
+        settings.lastActiveChannelName = name
+        store.saveSettings(settings)
+    }
+
+    func tune(_ memory: ChannelMemory) {
+        if let message = frequencyValidationMessage(rx: memory.frequency, tx: memory.txFrequency) {
+            statusLine = message
+            return
+        }
+        setActiveChannel(memory: memory)
+        persistActiveMemorySelection(memory)
         applyMemory(memory)
     }
 
@@ -331,18 +400,12 @@ final class AppState: ObservableObject {
             statusLine = message
             return
         }
-        activeFrequency = rx
-        activeRxFrequency = rx
-        activeTxFrequency = tx
-        activeTxTone = RadioToneHelper.normalize(txTone)
-        activeRxTone = RadioToneHelper.normalize(rxTone)
-        activeMemoryId = -1
-        activeMemoryName = "Direct"
+        setActiveDirectChannel(rx: rx, tx: tx, txTone: txTone, rxTone: rxTone)
         settings.directRxFrequency = String(format: "%.4f", rx)
         settings.directTxFrequency = String(format: "%.4f", tx)
         settings.directTxTone = activeTxTone
         settings.directRxTone = activeRxTone
-        store.saveSettings(settings)
+        persistActiveDirectSelection()
         applySettingsToRadio()
     }
 
@@ -557,8 +620,10 @@ final class AppState: ObservableObject {
                 identifier: identifier,
                 replyAcknowledgementIdentifier: replyAck
             )
+            guard sendAPRSPacketAX25(packet.encodedUIFrame(), kind: "APRS message") else {
+                return false
+            }
             messageNumber = (messageNumber + 1) % APRSService.compactMessageIdentifierCount
-            sendAX25(packet.encodedUIFrame())
             let message = APRSMessage(
                 type: .message,
                 from: settings.callsign,
@@ -651,7 +716,7 @@ final class AppState: ObservableObject {
                 identifier: identifier,
                 replyAcknowledgementIdentifier: replyAck
             )
-            sendAX25(packet.encodedUIFrame()) { [weak self] succeeded in
+            sendAPRSPacketAX25(packet.encodedUIFrame(), kind: "APRS message retry") { [weak self] succeeded in
                 guard let self else { return }
                 if succeeded {
                     self.noteSuccessfulAPRSRetry(messageID: messageID, retryIndex: retryIndex)
@@ -983,7 +1048,7 @@ final class AppState: ObservableObject {
                 to: station,
                 identifier: rawIdentifier
             )
-            sendAX25(packet.encodedUIFrame()) { [weak self] succeeded in
+            sendAPRSPacketAX25(packet.encodedUIFrame(), kind: "APRS acknowledgement") { [weak self] succeeded in
                 guard let self else { return }
                 self.aprsAcknowledgementTasks[key] = nil
                 if succeeded {
@@ -1167,7 +1232,9 @@ final class AppState: ObservableObject {
                 comment: aprsBeaconComment,
                 symbol: APRSService.symbol(named: settings.aprsIcon)
             )
-            sendBeaconAX25(packet.encodedUIFrame(), targetFrequency: beaconFrequency)
+            guard sendAPRSPacketAX25(packet.encodedUIFrame(), kind: "APRS position beacon") else {
+                return
+            }
             let parsed = aprs.parse(packet: packet)
             messages.append(parsed)
             saveAPRSMessages()
@@ -1219,14 +1286,58 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func sendBeaconAX25(_ frame: Data, targetFrequency: Float?) {
+    @discardableResult
+    private func sendAPRSPacketAX25(
+        _ frame: Data,
+        kind: String,
+        completion: (@MainActor @Sendable (Bool) -> Void)? = nil
+    ) -> Bool {
+        guard transportIsConnected else {
+            statusLine = "Connect to the radio before sending \(kind)."
+            completion?(false)
+            return false
+        }
+        guard !isTransmitting else {
+            statusLine = "Wait until voice transmit ends before sending \(kind)."
+            completion?(false)
+            return false
+        }
+
+        do {
+            let aprsFrequency = try selectedBeaconFrequency()
+            if let aprsFrequency, !isTxAllowed(aprsFrequency) {
+                statusLine = String(format: "APRS frequency %.4f is outside your TX limits.", aprsFrequency)
+                completion?(false)
+                return false
+            }
+            sendAX25OnAPRSFrequency(frame, targetFrequency: aprsFrequency, kind: kind, completion: completion)
+            return true
+        } catch {
+            statusLine = error.localizedDescription
+            completion?(false)
+            return false
+        }
+    }
+
+    private func sendAX25OnAPRSFrequency(
+        _ frame: Data,
+        targetFrequency: Float?,
+        kind: String,
+        completion: (@MainActor @Sendable (Bool) -> Void)? = nil
+    ) {
         guard let targetFrequency else {
-            sendAX25(frame)
-            lastDebugLine = "APRS beacon queued on current radio frequency."
+            sendAX25(frame, completion: completion)
+            lastDebugLine = "\(kind.capitalized) queued on current radio frequency."
             return
         }
 
-        lastDebugLine = String(format: "APRS beacon retuning to %.4f MHz before TX.", targetFrequency)
+        if radioIsAlreadyOnAPRSFrequency(targetFrequency) {
+            sendAX25(frame, completion: completion)
+            lastDebugLine = String(format: "%@ queued on active APRS frequency %.4f MHz.", kind.capitalized, targetFrequency)
+            return
+        }
+
+        lastDebugLine = String(format: "%@ retuning to %.4f MHz before TX.", kind.capitalized, targetFrequency)
         sendDesiredState(
             memoryId: -1,
             tx: targetFrequency,
@@ -1236,8 +1347,8 @@ final class AppState: ObservableObject {
             ptt: false,
             priority: .urgentDropQueued
         )
-        sendAX25(frame, after: Self.beaconRetuneDelaySeconds)
-        scheduleVoiceChannelRestoreAfterBeacon(targetFrequency)
+        sendAX25(frame, after: Self.aprsRetuneDelaySeconds, completion: completion)
+        scheduleVoiceChannelRestoreAfterAPRS(targetFrequency)
     }
 
     private func selectedBeaconFrequency() throws -> Float? {
@@ -1266,13 +1377,18 @@ final class AppState: ObservableObject {
         return String(format: "Queued APRS position beacon on %.4f MHz.", targetFrequency)
     }
 
-    private func scheduleVoiceChannelRestoreAfterBeacon(_ targetFrequency: Float) {
+    private func radioIsAlreadyOnAPRSFrequency(_ targetFrequency: Float) -> Bool {
+        abs(activeRxFrequency - targetFrequency) <= Self.aprsFrequencyMatchToleranceMHz &&
+            abs(activeTxFrequency - targetFrequency) <= Self.aprsFrequencyMatchToleranceMHz
+    }
+
+    private func scheduleVoiceChannelRestoreAfterAPRS(_ targetFrequency: Float) {
         beaconRestoreTask?.cancel()
         beaconRestoreTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.beaconRestoreDelaySeconds * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(Self.aprsRestoreDelaySeconds * 1_000_000_000))
             await MainActor.run {
                 guard let self, !self.isTransmitting else { return }
-                self.lastDebugLine = String(format: "Restoring voice channel after APRS beacon on %.4f MHz.", targetFrequency)
+                self.lastDebugLine = String(format: "Restoring voice channel after APRS packet on %.4f MHz.", targetFrequency)
                 self.applySettingsToRadio(ptt: false, priority: .urgentDropQueued)
             }
         }
@@ -1817,13 +1933,15 @@ final class AppState: ObservableObject {
     private static let postTransmitForceReadyDelayMS = 1_700
     private static let maximumCaptureStartRetries = 3
     private static let captureStartRetryDelays: [TimeInterval] = [0.18, 0.45, 0.9]
-    private static let beaconRetuneDelaySeconds: TimeInterval = 0.45
-    private static let beaconRestoreDelaySeconds: TimeInterval = 3.0
+    private static let aprsRetuneDelaySeconds: TimeInterval = 0.45
+    private static let aprsRestoreDelaySeconds: TimeInterval = 3.0
     private static let cachedLocationFreshnessSeconds: TimeInterval = 300
     private static let receiveActivitySpeakerSettleSeconds: TimeInterval = 0.18
     private static let receiveAudioAudibleHoldSeconds: TimeInterval = 2.6
     private static let receiveAudioOpenSquelchHoldSeconds: TimeInterval = 8.0
     private static let aprsFrequencyMatchToleranceMHz: Float = 0.001
+    private static let channelSourceMemory = "Memory"
+    private static let channelSourceDirect = "Direct"
 }
 
 private final class APRSLocationProvider: NSObject, CLLocationManagerDelegate {

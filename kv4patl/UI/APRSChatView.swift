@@ -64,20 +64,9 @@ struct APRSChatView: View {
     @ViewBuilder
     private var macSectionContent: some View {
         if section == .map {
-            HStack(alignment: .top, spacing: 16) {
-                mapPanel
-                    .frame(maxWidth: 620)
-
-                ScrollView(.vertical, showsIndicators: true) {
-                    beaconList
-                        .frame(minWidth: 300, maxWidth: .infinity)
-                }
-                .scrollIndicators(.visible)
-                .frame(maxHeight: .infinity)
+            GeometryReader { proxy in
+                macMapContent(width: proxy.size.width, height: proxy.size.height)
             }
-            .padding()
-            .frame(maxWidth: KV4PTheme.maxContentWidth, maxHeight: .infinity, alignment: .top)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
             ScrollView(.vertical, showsIndicators: true) {
                 Group {
@@ -99,6 +88,24 @@ struct APRSChatView: View {
             .scrollIndicators(.visible)
         }
     }
+
+    private func macMapContent(width: CGFloat, height: CGFloat) -> some View {
+        let mapHeight = max(360, height - 220)
+        return HStack(alignment: .top, spacing: 16) {
+            mapPanel(mapHeight: mapHeight)
+                .frame(minWidth: min(420, width * 0.46), maxWidth: .infinity, alignment: .top)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                beaconList
+                    .frame(minWidth: min(320, width * 0.36), maxWidth: .infinity)
+            }
+            .scrollIndicators(.visible)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding()
+        .padding(.bottom, 104)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
     #endif
 
     private var sectionPicker: some View {
@@ -115,6 +122,10 @@ struct APRSChatView: View {
     }
 
     private var mapPanel: some View {
+        mapPanel(mapHeight: 280)
+    }
+
+    private func mapPanel(mapHeight: CGFloat) -> some View {
         KV4PCard("Stations", systemImage: "map") {
             HStack {
                 KV4PBadge(text: "\(app.aprsStations.count) heard", systemImage: "antenna.radiowaves.left.and.right", tint: .blue)
@@ -127,7 +138,7 @@ struct APRSChatView: View {
                     }
                 }
             }
-            .frame(height: 280)
+            .frame(height: mapHeight)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
@@ -232,9 +243,8 @@ struct APRSChatView: View {
     }
 
     private var messageField: some View {
-        TextField("Message", text: $message, axis: .vertical)
-            .lineLimit(1...3)
-            .textFieldStyle(.roundedBorder)
+        TextField("Message", text: $message)
+            .textFieldStyle(.plain)
             .submitLabel(.send)
             .focused($focusedComposerField, equals: .message)
             .onSubmit(sendMessage)
@@ -247,12 +257,21 @@ struct APRSChatView: View {
     }
 
     private var messageEditor: some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        HStack(spacing: 8) {
             messageField
             Text("\(message.count)/\(APRSService.maxMessageTextLength)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(message.count == APRSService.maxMessageTextLength ? .orange : .secondary)
+                .frame(width: 44, alignment: .trailing)
                 .accessibilityLabel("\(message.count) of \(APRSService.maxMessageTextLength) APRS message characters used")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(minHeight: 36)
+        .background(.background, in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(.secondary.opacity(0.24), lineWidth: 1)
         }
     }
 
@@ -265,6 +284,7 @@ struct APRSChatView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .keyboardShortcut(.return, modifiers: [.command])
         .accessibilityLabel("Send APRS message")
     }
 

@@ -54,6 +54,13 @@ struct AppSettings: Codable, Equatable {
     var directRxFrequency = "146.5200"
     var directTxTone = "None"
     var directRxTone = "None"
+    var lastChannelSource = "Memory"
+    var lastMemoryId: Int32?
+    var lastActiveRxFrequency = "146.5200"
+    var lastActiveTxFrequency = "146.5200"
+    var lastActiveTxTone = "None"
+    var lastActiveRxTone = "None"
+    var lastActiveChannelName = "National Simplex"
     var highPower = false
     var squelch = 0
     var filterPre = false
@@ -93,6 +100,13 @@ struct AppSettings: Codable, Equatable {
         directRxFrequency = try container.decodeIfPresent(String.self, forKey: .directRxFrequency) ?? directRxFrequency
         directTxTone = try container.decodeIfPresent(String.self, forKey: .directTxTone) ?? directTxTone
         directRxTone = try container.decodeIfPresent(String.self, forKey: .directRxTone) ?? directRxTone
+        lastChannelSource = try container.decodeIfPresent(String.self, forKey: .lastChannelSource) ?? lastChannelSource
+        lastMemoryId = try container.decodeIfPresent(Int32.self, forKey: .lastMemoryId) ?? lastMemoryId
+        lastActiveRxFrequency = try container.decodeIfPresent(String.self, forKey: .lastActiveRxFrequency) ?? lastActiveRxFrequency
+        lastActiveTxFrequency = try container.decodeIfPresent(String.self, forKey: .lastActiveTxFrequency) ?? lastActiveTxFrequency
+        lastActiveTxTone = try container.decodeIfPresent(String.self, forKey: .lastActiveTxTone) ?? lastActiveTxTone
+        lastActiveRxTone = try container.decodeIfPresent(String.self, forKey: .lastActiveRxTone) ?? lastActiveRxTone
+        lastActiveChannelName = try container.decodeIfPresent(String.self, forKey: .lastActiveChannelName) ?? lastActiveChannelName
         highPower = try container.decodeIfPresent(Bool.self, forKey: .highPower) ?? highPower
         squelch = try container.decodeIfPresent(Int.self, forKey: .squelch) ?? squelch
         filterPre = try container.decodeIfPresent(Bool.self, forKey: .filterPre) ?? filterPre

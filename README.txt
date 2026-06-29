@@ -6,7 +6,7 @@ It keeps the KV4P 2.0 KISS protocol semantics while adding an Apple-platform
 Bluetooth Low Energy transport for voice, APRS, memories, radio control, and
 firmware status.
 
-Current shared development version: 0.3.2.
+Current shared development version: 0.3.3.
 
 This workspace contains the app source in kv4patl/, protocol tests in
 kv4patl_tests/, firmware bridge code in firmware/ble_bridge/, and the portable
@@ -70,6 +70,7 @@ Provisioning notes:
 - Direct target builds with -sdk iphoneos and -sdk iphonesimulator work; a signed device install requires a local Xcode signing setup.
 
 Notes:
+- Version 0.3.3 fixes the APRS composer and shared app state on iPhone and Mac. The APRS message field is now a single-line send field with an inline `#/67` counter so Enter and the send button queue the message cleanly without misaligning the To field. The macOS APRS map now uses a true two-column layout with the map filling the left side above the fixed composer. The app persists the last active voice channel or direct split/tone selection and reapplies it after relaunch/reconnect. APRS messages, retries, acknowledgements, and beacons now all use the selected APRS frequency path instead of only manual beacons honoring that setting.
 - Version 0.3.2 adds reliable APRS messaging on iPhone and Mac. Direct messages use compact two-character message identifiers, APRS 1.1 Reply-ACK capability signaling, explicit ACK/reject handling, automatic inbound ACK responses, and decaying retries at 15, 30, 60, 120, and 240 seconds followed by a final acknowledgement grace period. Message rows show pending retry counts, delivered, failed, and acknowledgement-sent states; the composer enforces and displays the APRS 67-character message-text limit. Reliable outgoing messages are enabled by default and can be disabled in Settings.
 - Version 0.3.1 fixes macOS scrolling throughout the app. Shared screen containers, Settings, and Memories now expose visible scroll indicators; APRS uses an independently scrollable packet feed beside the interactive map; and full bundled legal texts open in a dedicated scrolling sheet instead of a nested scroll view that could trap the About page.
 - Version 0.3.0 adds a native macOS app target that shares the radio, BLE, APRS, persistence, settings, audio codec, and UI source with iPhone. The Mac app uses a resizable/full-screen sidebar workspace, desktop Voice and APRS layouts, Mac-native Core Audio microphone/playback behavior, App Sandbox Bluetooth/audio/location/network entitlements, shared protocol tests, and an in-app browser for every bundled legal text. The iOS and macOS targets use the same bundle identifier so they can be attached to one App Store Connect record for universal purchase.
@@ -87,6 +88,6 @@ Notes:
 - Voice now exposes RX/TX split frequency and CTCSS tone index controls. Current upstream KV4P firmware exposes CTCSS tone indexes; true DCS/CDCSS is a separate future protocol/firmware feature.
 - APRS now has Map, Messages, Beacons, and Packets views with AX.25/APRS parsing feeding those sections.
 - Memories are managed manually in-app; the previous CSV repeater importer has been removed.
-- Current source-build status: iPhone device-SDK build passed, native macOS build and APRS messaging UI QA passed, shared macOS protocol tests passed 31/31, and the BLE firmware/flasher package was regenerated for shared version 0.3.2. The self-contained web flasher embeds firmware manifest version `0.3.2-fw17-ble`.
+- Current source-build status: iPhone device-SDK build passed, native macOS build and APRS map/composer UI QA passed, shared macOS protocol tests passed 31/31, and the BLE firmware/flasher package was regenerated for shared version 0.3.3. The self-contained web flasher embeds firmware manifest version `0.3.3-fw17-ble`.
 - BLE RF voice uses 8 kHz mono IMA ADPCM at 20 ms frames. KV4P/ATL keeps a warm 48 kHz AVAudioEngine graph and down/up-samples internally so PTT does not rebuild the app audio path.
 - RX power save is optional and receive-safe. The app sends firmware host-state flags, but it keeps RX audio requested; the firmware keeps the RX path armed and slows nonessential reporting without suppressing ADPCM frames based on squelch state.
